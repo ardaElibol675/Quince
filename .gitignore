@@ -1,2 +1,26 @@
-CLAUDE.md
-PLAN.md
+# Virtualenv
+.venv/
+
+# Python caches and build outputs
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated test fixtures (recreate with scripts/make_fixtures.py)
+tests/fixtures/generated/
+
+# Packaging outputs
+packaging/deb/build/
+*.deb
+
+# Editors
+.vscode/
+.idea/
