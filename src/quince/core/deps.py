@@ -62,6 +62,14 @@ DEPENDENCIES: tuple[Dependency, ...] = (
     Dependency("pypdf", DepKind.PYTHON, "pypdf", True, "PDF merge, split, organize", pip="pypdf"),
     Dependency("pymupdf", DepKind.PYTHON, "pymupdf", True, "PDF rendering and text", pip="PyMuPDF"),
     Dependency("pysubs2", DepKind.PYTHON, "pysubs2", True, "subtitle conversion", pip="pysubs2"),
+    Dependency(
+        "python-xlib",
+        DepKind.PYTHON,
+        "Xlib",
+        True,
+        "global drag and trigger detection (X11)",
+        pip="python-xlib",
+    ),
     # System libraries
     Dependency(
         "libxcb-cursor",

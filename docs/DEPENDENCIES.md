@@ -26,8 +26,12 @@ Install everything on Ubuntu 22.04:
 sudo apt install python3-venv libxcb-cursor0 ffmpeg libreoffice pandoc librsvg2-bin p7zip-full unrar
 ```
 
-Expected in later phases (not needed yet): an XInput2 binding (Phase 1, chosen there),
-`python3-nautilus` (Phase 11, Nautilus extension).
+Expected in later phases (not needed yet): `python3-nautilus` (Phase 11, Nautilus extension).
+
+Development only (optional, both installed on the dev machine): `xvfb` runs the nested-X
+drag tests invisibly (`tests/integration/test_x11_drag.py`), and `python3-gi` with GTK 3
+(part of Ubuntu desktop) runs their GTK3 drag source under the system Python. Without Xvfb
+the tests need `xserver-xephyr` and `QUINCE_NESTED_X=1`, and they open a small window.
 
 ## Python packages (`.venv`, from `pyproject.toml`)
 
@@ -39,6 +43,7 @@ Expected in later phases (not needed yet): an XInput2 binding (Phase 1, chosen t
 | `pypdf`       | PDF merge, split, organize                  | 6.21.4         |
 | `PyMuPDF`     | PDF rendering (page images) and text        | 1.28.2         |
 | `pysubs2`     | subtitle conversion                         | 1.8.1          |
+| `python-xlib` | global drag and trigger detection (XInput2, XFixes, X11) | 0.33   |
 | `ruff`        | dev: lint and format                        | 0.17.3         |
 | `pytest`      | dev: tests                                  | 9.2.0          |
 | `pytest-qt`   | dev: Qt widget tests                        | 4.5.0          |

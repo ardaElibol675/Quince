@@ -47,6 +47,8 @@ ruff check . && ruff format --check .          # lint
 QT_QPA_PLATFORM=offscreen pytest               # tests
 python scripts/make_fixtures.py                # generate sample files into tests/fixtures/generated/
 python scripts/check_formats.py                # probe real format support on this machine
+QUINCE_NESTED_X=1 pytest tests/integration/test_x11_drag.py   # drag tests in Xephyr (auto with Xvfb)
+quince spike-drag -v                           # Phase 1 debug overlay for drag + tap
 ```
 
 ## License

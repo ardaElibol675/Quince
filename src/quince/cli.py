@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import platform
 import sys
@@ -10,6 +11,7 @@ from collections.abc import Sequence
 
 from quince import __version__
 from quince.core import deps
+from quince.input import drag
 
 
 def _status_row(status: deps.DependencyStatus) -> str:
@@ -67,12 +69,33 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     return 1 if any(s.dependency.required and not s.available for s in statuses) else 0
 
 
+def cmd_spike_drag(args: argparse.Namespace) -> int:
+    from quince.ui.spike import app
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    return app.run(max_tap_ms=args.tap_ms, require_dnd=not args.any_drag)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="quince", description=__doc__)
     parser.add_argument("--version", action="version", version=f"quince {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     doctor = sub.add_parser("doctor", help="check external dependencies")
     doctor.set_defaults(func=cmd_doctor)
+
+    spike = sub.add_parser("spike-drag", help="Phase 1 spike: debug overlay for drag + tap")
+    spike.add_argument("--tap-ms", type=int, default=drag.DEFAULT_MAX_TAP_MS, help="max tap length")
+    spike.add_argument(
+        "--any-drag",
+        action="store_true",
+        help="count any button-1 drag, not only file drag-and-drop (for debugging)",
+    )
+    spike.add_argument("-v", "--verbose", action="store_true", help="log raw keys during drags")
+    spike.set_defaults(func=cmd_spike_drag)
     return parser
 
 
