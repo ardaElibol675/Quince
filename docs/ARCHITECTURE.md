@@ -140,3 +140,146 @@ it.
   Nautilus drag is invisible. `quince doctor` warns when the session is not X11.
 - A drag started by any XDND source counts, not only Nautilus. This is intended: dragging from
   any file-aware app opens the wheel.
+
+## Core model (Phase 2)
+
+Everything in `src/quince/core/` is pure Python without Qt, so it is unit tested directly and
+shared by the CLI, the background service and the UI.
+
+| Module | Role |
+|--------|------|
+| `formats.py` | Format registry: id, short label, name, category, extensions, MIME types. The table order is the default slice order on the Convert wheel. |
+| `filetype.py` | Detection: extension plus content signatures (see below). |
+| `selection.py` | `Selection` of files and folders: category, mixed, folders, unknown types. |
+| `routes.py` | Conversion routes as data: `Route(source, target, backend, options, requires)`. |
+| `operations.py` | The operation contract (`Operation`, `Accepts`, `Kind`). |
+| `registry.py` | Discovery, filtering by selection, availability and user preferences. |
+| `deps.py` | Dependency declarations, `quince doctor` checks, `Availability`. |
+| `naming.py` | Collision-safe output paths. |
+| `config.py`, `paths.py` | TOML settings in XDG directories. |
+
+### From modules to wheel items
+
+```
+operations/convert/*.py  ROUTES = (Route("png", "jpg", "imaging"), ...)
+            │  RouteTable (one route per source/target pair)
+            ▼
+  convert_operations(): one Operation per target format, e.g. convert.image.jpg,
+            │           holding the routes into that target
+operations/tools/*.py, operations/actions/*.py  OPERATION = Operation(...)
+            ▼
+Registry.query(selection, kind, available=..., prefs=...) ──▶ the wheel's slices, in order
+```
+
+- `discover()` imports every module of `quince.operations.convert`, `.tools` and `.actions`
+  (names starting with `_` are skipped). A module without `ROUTES` / `OPERATION` is an error.
+  So adding a route line or an operation module needs no other code change; a test proves it
+  with a temporary package.
+- `query` rules, in order:
+  1. Convert and Tools return nothing unless the selection is files of one known category
+     (Hard Rule 9). Actions accept anything they declare.
+  2. `Accepts`: formats or categories, item count, folders, mixed, an optional predicate.
+  3. A Convert target is accepted when every file has a route to it or already is in that
+     format, and at least one file needs converting. So JPG + HEIC still offers JPG.
+  4. Availability: the dependencies of the routes the selection actually uses must be present.
+     A missing LibreOffice hides DOCX → PNG but not JPG → PNG.
+  5. Config: disabled ids are dropped; ids in `order` come first, the rest keep the default
+     order (`Operation.order`, then label).
+- `Registry.unavailable()` lists what missing dependencies hide, per route for Convert. It
+  feeds `quince doctor` now and the Settings window later (Phase 16).
+
+### File type detection
+
+`sniff()` reads the first 4 KiB and returns every format the content is compatible with,
+best guess first. Shared containers return all their formats: ISO media (MP4/M4A/MOV; HEIC
+and AVIF are told apart by brand), Matroska (MKV/WebM), Ogg (OGG/Opus), ASF (WMA/WMV, video
+stream GUID), plain text. ZIP files are opened to tell DOCX/XLSX/PPTX, ODT/ODS/ODP and EPUB
+from plain ZIP. OLE2 files (DOC/XLS/PPT) are told apart by walking the compound file
+directory (the names are often not in the first sector).
+
+`resolve()` then decides:
+- extension format among the candidates, or content inconclusive → the extension wins;
+- content contradicts the extension → the content wins (a PNG renamed to `.jpg` is a PNG);
+- no extension match and no content match → unknown type (only file actions).
+
+A DOCX renamed to `.zip` stays a ZIP, because ZIP is among its candidates; archive tools apply.
+Every generated fixture is detected correctly both with and without its extension.
+
+### Output naming
+
+`output_path(source, extension=, suffix=, directory=, reserved=)` never returns an existing
+path (dangling symlinks count): `photo.jpg`, `photo (1).jpg`, ...; tools add a suffix
+(`photo-cropped.jpg`). Compound extensions are kept (`backup.tar.gz`), an empty extension
+names an output folder, and names are shortened to fit 255 bytes. `reserved` covers outputs
+of the same batch that do not exist yet. Phase 5 adds the atomic rename into the final path.
+
+### Config
+
+`~/.config/quince/config.toml` (`$XDG_CONFIG_HOME` honored); `quince config` prints the
+effective settings. A missing file means defaults and is not created on load. Every invalid
+value falls back to its default with a logged warning; Quince never fails to start because of
+the config. Saving writes a temporary file and renames it. The drag tracker now takes its
+triggers and tap length from the config.
+
+## Wheel component (Phase 3)
+
+`src/quince/ui/wheel/` holds the wheel, independent of how it is opened.
+
+| Module | Role |
+|--------|------|
+| `geometry.py` | Pure math: N equal slices in one ring, radius scaling, label boxes, hit-testing, screen clamping. |
+| `state.py` | Pure logic: which slice is highlighted, by pointer or keyboard (X keysym names). |
+| `model.py` | `WheelContent` / `WheelItem`, built from `Registry.query` results. |
+| `render.py` | QPainter drawing: shadow, ring, highlighted sector, icons and labels, center text. |
+| `window.py` | `WheelWindow`: placement, animations, mouse, keys, drag-over and drops. |
+| `demo.py` | `quince wheel-demo`. |
+
+### Geometry
+
+- Slice 0 is centered at 12 o'clock; slices follow clockwise. Every slice spans 360/N degrees.
+- The ring is always 88 px thick. The center disc is at least 64 px in radius. When N grows,
+  the ring grows so each slice keeps at least 76 px of arc at the label radius. Up to N = 7
+  the wheel has its base size (window 360 px); at N = 20 the window is about 630 px.
+- Labels are elided to 90 % of the slice chord (max 112 px); icons shrink from 32 to 20 px,
+  the font from 13 to 11 px.
+- Hit-testing: the center disc and everything beyond the ring (plus 6 px of slop) are "no
+  slice"; releasing or dropping there closes the wheel.
+- The wheel center is clamped so the ring stays inside the available area of the screen under
+  the pointer (multi-monitor aware). When the wheel switches to a larger N, the center may move.
+
+### Pointer and keyboard
+
+- `WheelState` holds the highlight. Arrows (Left/Up previous, Right/Down next, wrapping),
+  Home/End, Enter/Space choose, Esc/Tab close.
+- After an arrow key the wheel is in keyboard mode and ignores the pointer until it moves
+  24 px away from where it was. GTK nudges the pointer by 1 px per arrow key during a drag
+  (Phase 1 finding), so those nudges never steal the highlight.
+- `WheelWindow.handle_key()` takes keysym names, so the Phase 4 controller can feed raw X11
+  keys while the drag source holds the keyboard grab. Qt key events are mapped to the same
+  names. The demo takes the keyboard with `grabKeyboard()` instead (XGrabKeyboard works on the
+  override-redirect window when no drag is running).
+- Drops are answered with Copy only (Hard Rule 5), like the Phase 1 overlay. A drop chooses the
+  **highlighted** slice, not the one under the pointer, so Enter during a keyboard choice
+  (GTK drops at the pointer) runs the slice picked with the arrows.
+
+### Look and motion
+
+- Colors come from `ui/theme/colors.py`: light and dark sets with an orange accent. "system"
+  follows `QStyleHints.colorScheme()`, which Qt 6.10 reads correctly on GNOME 42 / X11, and
+  repaints on `colorSchemeChanged`.
+- Icons are freedesktop names resolved with `QIcon.fromTheme` (Yaru on Ubuntu). A missing icon
+  falls back to the label's first letter in a circle.
+- The center shows the wheel name and the highlighted item's full name (`Operation.title`,
+  e.g. "JPEG image" for the JPG slice), or the wheel name alone, or the empty-state message.
+  Three dots show which of Convert / Tools / Actions is open.
+- Animations: open 170 ms (fade + scale from 0.86), close 110 ms, switch 200 ms (old contents
+  fade and turn away while the new ones turn in). They can be turned off (`animations=False`,
+  `--no-animations`), which tests use.
+
+### Testing notes
+
+- Geometry and state are unit tested for N = 0..20. Window behavior (keys, clicks, drags with
+  Move proposed, switching, animations) runs under `QT_QPA_PLATFORM=offscreen`.
+- The offscreen platform has no icon theme, so a test installs a tiny theme to cover the icon
+  path. The keyboard grab and real Yaru icons were checked in Xvfb with XTest keys.
+

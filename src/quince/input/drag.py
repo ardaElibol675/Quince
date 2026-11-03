@@ -16,8 +16,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from quince.core.config import DEFAULT_MAX_TAP_MS, DEFAULT_TRIGGERS, validate_triggers
+
 DEFAULT_DRAG_THRESHOLD_PX = 8
-DEFAULT_MAX_TAP_MS = 400
 
 # Middle and right click during a drag cancel the wheel. GTK drops on these clicks, so the
 # drop that follows must be swallowed and ignored.
@@ -29,13 +30,6 @@ SCROLL_BUTTONS = frozenset({4, 5, 6, 7})
 NAV_KEYS = frozenset(
     {"Escape", "Left", "Right", "Up", "Down", "Home", "End", "Return", "KP_Enter", "space", "Tab"}
 )
-
-# Placeholder until config loading exists (Phase 2); then triggers come from config.
-DEFAULT_TRIGGERS: Mapping[str, Sequence[str]] = {
-    "convert": ("Shift_L", "Shift_R"),
-    "tools": ("Control_L", "Control_R"),
-    "actions": ("Alt_L",),
-}
 
 
 # --- input events -----------------------------------------------------------
@@ -121,19 +115,6 @@ class DragKey:
 
 
 Signal = DragStarted | DragEnded | TriggerTapped | DragKey | DragCancel
-
-
-def validate_triggers(triggers: Mapping[str, Sequence[str]]) -> dict[str, str]:
-    """Return a key -> wheel map; reject Super/Hyper keys and keys bound twice."""
-    by_key: dict[str, str] = {}
-    for wheel, keys in triggers.items():
-        for key in keys:
-            if key.startswith(("Super", "Hyper")):
-                raise ValueError(f"{key} cannot be used as a trigger")
-            if key in by_key:
-                raise ValueError(f"{key} is bound to both {by_key[key]} and {wheel}")
-            by_key[key] = wheel
-    return by_key
 
 
 class DragTracker:

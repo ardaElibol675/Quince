@@ -49,6 +49,10 @@ python scripts/make_fixtures.py                # generate sample files into test
 python scripts/check_formats.py                # probe real format support on this machine
 QUINCE_NESTED_X=1 pytest tests/integration/test_x11_drag.py   # drag tests in Xephyr (auto with Xvfb)
 quince spike-drag -v                           # Phase 1 debug overlay for drag + tap
+quince wheel-demo --n 7                        # preview the wheel (Shift/Ctrl/Alt tap = switch, Q = quit)
+quince list-ops FILE...                        # what each wheel offers for these files/folders
+quince config                                  # print the effective settings (~/.config/quince/config.toml)
+python scripts/gen_formats_table.py            # regenerate docs/FORMATS.md after changing formats or routes
 ```
 
 ## License

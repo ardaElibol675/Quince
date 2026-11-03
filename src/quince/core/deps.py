@@ -12,7 +12,7 @@ import importlib.util
 import re
 import shutil
 import subprocess
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 
@@ -137,17 +137,22 @@ def _run_version(path: str, args: tuple[str, ...]) -> str | None:
     return parse_version(proc.stdout + "\n" + proc.stderr)
 
 
-def _check_binary(dep: Dependency, which: Callable[[str], str | None]) -> DependencyStatus:
+def _check_binary(
+    dep: Dependency, which: Callable[[str], str | None], versions: bool
+) -> DependencyStatus:
     path = which(dep.target)
     if path is None:
         return DependencyStatus(dep, available=False)
-    return DependencyStatus(dep, True, _run_version(path, dep.version_args), path)
+    version = _run_version(path, dep.version_args) if versions else None
+    return DependencyStatus(dep, True, version, path)
 
 
-def _check_python(dep: Dependency) -> DependencyStatus:
+def _check_python(dep: Dependency, versions: bool) -> DependencyStatus:
     spec = importlib.util.find_spec(dep.target)
     if spec is None:
         return DependencyStatus(dep, available=False)
+    if not versions:
+        return DependencyStatus(dep, True, None, spec.origin)
     try:
         ver = importlib.metadata.version(dep.pip or dep.target)
     except importlib.metadata.PackageNotFoundError:
@@ -160,20 +165,34 @@ def _check_library(dep: Dependency) -> DependencyStatus:
     return DependencyStatus(dep, found is not None, None, found)
 
 
-def check(dep: Dependency, which: Callable[[str], str | None] = shutil.which) -> DependencyStatus:
-    """Check whether a single dependency is available."""
+def check(
+    dep: Dependency,
+    which: Callable[[str], str | None] = shutil.which,
+    *,
+    versions: bool = True,
+) -> DependencyStatus:
+    """Check whether a single dependency is available.
+
+    With ``versions=False`` only presence is checked, which is fast: no process is run.
+    """
     if dep.kind is DepKind.BINARY:
-        return _check_binary(dep, which)
+        return _check_binary(dep, which, versions)
     if dep.kind is DepKind.PYTHON:
-        return _check_python(dep)
+        return _check_python(dep, versions)
     return _check_library(dep)
 
 
 def check_all(
     deps: Iterable[Dependency] = DEPENDENCIES,
     which: Callable[[str], str | None] = shutil.which,
+    *,
+    versions: bool = True,
 ) -> list[DependencyStatus]:
-    return [check(dep, which) for dep in deps]
+    return [check(dep, which, versions=versions) for dep in deps]
+
+
+def find(dep_id: str) -> Dependency | None:
+    return next((d for d in DEPENDENCIES if d.id == dep_id), None)
 
 
 def missing_apt_packages(statuses: Iterable[DependencyStatus]) -> list[str]:
@@ -184,3 +203,47 @@ def missing_apt_packages(statuses: Iterable[DependencyStatus]) -> list[str]:
         if not status.available and apt and apt not in packages:
             packages.append(apt)
     return packages
+
+
+def install_hint(dep: Dependency) -> str:
+    if dep.apt:
+        return f"sudo apt install {dep.apt}"
+    if dep.pip:
+        return f"pip install {dep.pip}"
+    return ""
+
+
+class Availability:
+    """Which dependencies are present, for deciding which operations can be offered."""
+
+    def __init__(self, statuses: Iterable[DependencyStatus]) -> None:
+        self._statuses: Mapping[str, DependencyStatus] = {s.dependency.id: s for s in statuses}
+
+    @classmethod
+    def probe(cls) -> Availability:
+        """Check every declared dependency for presence (no version queries)."""
+        return cls(check_all(versions=False))
+
+    @classmethod
+    def everything(cls) -> Availability:
+        """Pretend every declared dependency is present (tests, previews)."""
+        return cls(DependencyStatus(dep, True) for dep in DEPENDENCIES)
+
+    def is_available(self, dep_id: str) -> bool:
+        status = self._statuses.get(dep_id)
+        return status is not None and status.available
+
+    def missing(self, requires: Iterable[str]) -> list[str]:
+        return [dep_id for dep_id in requires if not self.is_available(dep_id)]
+
+    def reason(self, requires: Iterable[str]) -> str | None:
+        """Why something with these requirements is unavailable, or None if it is not."""
+        missing = self.missing(requires)
+        if not missing:
+            return None
+        parts = []
+        for dep_id in missing:
+            dep = find(dep_id)
+            hint = install_hint(dep) if dep else ""
+            parts.append(f"{dep_id} ({hint})" if hint else dep_id)
+        return "needs " + ", ".join(parts)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+from collections.abc import Mapping, Sequence
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QCursor
@@ -58,7 +59,7 @@ class SpikeController(QObject):
             self._close_timer.start()
 
 
-def run(*, max_tap_ms: int, require_dnd: bool) -> int:
+def run(*, triggers: Mapping[str, Sequence[str]], max_tap_ms: int, require_dnd: bool) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setQuitOnLastWindowClosed(False)
 
@@ -67,7 +68,7 @@ def run(*, max_tap_ms: int, require_dnd: bool) -> int:
     bridge = _Bridge()
     bridge.received.connect(controller.handle)
 
-    tracker = drag.DragTracker(max_tap_ms=max_tap_ms, require_dnd=require_dnd)
+    tracker = drag.DragTracker(triggers, max_tap_ms=max_tap_ms, require_dnd=require_dnd)
     watcher = X11InputWatcher(tracker, bridge.received.emit)
     try:
         watcher.start()

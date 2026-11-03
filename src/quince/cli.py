@@ -8,10 +8,16 @@ import os
 import platform
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from quince import __version__
-from quince.core import deps
-from quince.input import drag
+from quince.core import config, deps, paths
+from quince.core.operations import Kind, Operation
+from quince.core.registry import Registry, discover
+from quince.core.selection import Selection
+
+WHEELS = config.WHEELS
+SCHEMES = ("system", "light", "dark")  # quince.ui.theme.colors.SCHEMES, without importing Qt
 
 
 def _status_row(status: deps.DependencyStatus) -> str:
@@ -27,7 +33,9 @@ def _status_row(status: deps.DependencyStatus) -> str:
     return f"  {mark} {dep.id:<14} {version:<12} {dep.enables}{hint}"
 
 
-def render_doctor(statuses: Sequence[deps.DependencyStatus]) -> str:
+def render_doctor(
+    statuses: Sequence[deps.DependencyStatus], registry: Registry | None = None
+) -> str:
     session = os.environ.get("XDG_SESSION_TYPE", "unknown")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "unknown")
     lines = [
@@ -60,13 +68,104 @@ def render_doctor(statuses: Sequence[deps.DependencyStatus]) -> str:
     apt = deps.missing_apt_packages(statuses)
     if apt:
         lines.append(f"Install with: sudo apt install {' '.join(apt)}")
+
+    if registry is not None:
+        hidden = registry.unavailable(deps.Availability(statuses))
+        lines += ["", f"Operations: {len(registry)} registered, {len(hidden)} hidden"]
+        lines += [f"  ✗ {h.label:<14} {h.reason}" for h in hidden]
     return "\n".join(lines)
 
 
 def cmd_doctor(_args: argparse.Namespace) -> int:
     statuses = deps.check_all()
-    print(render_doctor(statuses))
+    print(render_doctor(statuses, discover()))
     return 1 if any(s.dependency.required and not s.available for s in statuses) else 0
+
+
+def _wheel_section(title: str, ops: Sequence[Operation], empty: str) -> list[str]:
+    lines = [f"{title} ({len(ops)})" if ops else title]
+    if not ops:
+        return [*lines, f"  {empty}"]
+    width = max(len(op.label) for op in ops)
+    return [*lines, *(f"  {op.label:<{width}}  {op.id}" for op in ops)]
+
+
+def render_ops(
+    selection: Selection,
+    registry: Registry,
+    available: deps.Availability,
+    cfg: config.Config,
+) -> str:
+    """The ``quince list-ops`` report: what each wheel offers for ``selection``."""
+    names = ", ".join(i.path.name or str(i.path) for i in selection.items)
+    lines = [f"Selection: {names}", f"  {selection.describe()}"]
+    hidden: list[str] = []
+    disabled: list[str] = []
+    for kind, title in ((Kind.CONVERT, "Convert"), (Kind.TOOL, "Tools"), (Kind.ACTION, "Actions")):
+        prefs = cfg.wheel(kind.wheel)
+        shown = registry.query(selection, kind, available=available, prefs=prefs)
+        if kind is not Kind.ACTION and not selection.is_uniform:
+            empty = (
+                "(only file actions for folders and mixed selections)"
+                if selection.has_folders or selection.is_mixed
+                else "(unknown file type)"
+            )
+        else:
+            empty = "(nothing available)"
+        lines += ["", *_wheel_section(title, shown, empty)]
+        for op in registry.query(selection, kind):
+            if reason := available.reason(op.requirements(selection)):
+                hidden.append(f"  {op.label} ({op.id}): {reason}")
+            elif op.id in prefs.disabled:
+                disabled.append(f"  {op.label} ({op.id})")
+    if hidden:
+        lines += ["", "Hidden, missing dependencies", *hidden]
+    if disabled:
+        lines += ["", "Disabled in config", *disabled]
+    return "\n".join(lines)
+
+
+def cmd_list_ops(args: argparse.Namespace) -> int:
+    missing = [p for p in args.paths if not Path(p).exists()]
+    if missing:
+        print(f"quince: no such file or folder: {', '.join(missing)}", file=sys.stderr)
+        return 2
+    logging.basicConfig(level=logging.WARNING, format="quince: %(message)s")
+    selection = Selection.from_paths(Path(p).absolute() for p in args.paths)
+    report = render_ops(selection, discover(), deps.Availability.probe(), config.load())
+    print(report)
+    return 0
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    logging.basicConfig(level=logging.WARNING, format="quince: %(message)s")
+    path = paths.config_file()
+    if args.path:
+        print(path)
+        return 0
+    state = "exists" if path.exists() else "not created yet, defaults apply"
+    print(f"# {path} ({state})")
+    print(config.dumps(config.load(path)), end="")
+    return 0
+
+
+def cmd_wheel_demo(args: argparse.Namespace) -> int:
+    from quince.ui.wheel import demo
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    return demo.run(
+        count=args.n,
+        wheel=args.wheel,
+        files=args.files,
+        scheme=args.theme,
+        animations=not args.no_animations,
+        once=args.once,
+        grab=not args.no_grab,
+    )
 
 
 def cmd_spike_drag(args: argparse.Namespace) -> int:
@@ -77,7 +176,12 @@ def cmd_spike_drag(args: argparse.Namespace) -> int:
         format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    return app.run(max_tap_ms=args.tap_ms, require_dnd=not args.any_drag)
+    triggers = config.load().triggers
+    return app.run(
+        triggers=triggers.keys,
+        max_tap_ms=args.tap_ms or triggers.max_tap_ms,
+        require_dnd=not args.any_drag,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -87,8 +191,38 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="check external dependencies")
     doctor.set_defaults(func=cmd_doctor)
 
+    list_ops = sub.add_parser("list-ops", help="show what each wheel offers for files/folders")
+    list_ops.add_argument("paths", nargs="+", metavar="PATH")
+    list_ops.set_defaults(func=cmd_list_ops)
+
+    cfg = sub.add_parser("config", help="print the effective settings")
+    cfg.add_argument("--path", action="store_true", help="only print the config file path")
+    cfg.set_defaults(func=cmd_config)
+
+    wheel = sub.add_parser("wheel-demo", help="preview the wheel with any number of slices")
+    wheel.add_argument("--n", type=int, default=7, help="number of slices (default 7)")
+    wheel.add_argument("--wheel", choices=WHEELS, default="convert", help="wheel to open first")
+    wheel.add_argument(
+        "--file",
+        dest="files",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="show the real wheels for this file (repeatable); overrides --n",
+    )
+    wheel.add_argument("--theme", choices=SCHEMES, default="system")
+    wheel.add_argument("--no-animations", action="store_true")
+    wheel.add_argument("--once", action="store_true", help="quit after the first close")
+    wheel.add_argument(
+        "--no-grab",
+        action="store_true",
+        help="do not take the keyboard (lets you drag files from Nautilus onto the wheel)",
+    )
+    wheel.add_argument("-v", "--verbose", action="store_true")
+    wheel.set_defaults(func=cmd_wheel_demo)
+
     spike = sub.add_parser("spike-drag", help="Phase 1 spike: debug overlay for drag + tap")
-    spike.add_argument("--tap-ms", type=int, default=drag.DEFAULT_MAX_TAP_MS, help="max tap length")
+    spike.add_argument("--tap-ms", type=int, help="max tap length (default: from config)")
     spike.add_argument(
         "--any-drag",
         action="store_true",

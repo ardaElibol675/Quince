@@ -17,6 +17,8 @@ dependencies = [
     "PyMuPDF>=1.24",
     "pysubs2>=1.7",
     "python-xlib>=0.33",
+    "tomli>=2.0; python_version < '3.11'",
+    "tomli-w>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +41,10 @@ extend-exclude = ["tests/fixtures/generated"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# The format table keeps one format per line, so adding a format stays a one-line change.
+"src/quince/core/formats.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

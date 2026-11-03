@@ -44,6 +44,8 @@ the tests need `xserver-xephyr` and `QUINCE_NESTED_X=1`, and they open a small w
 | `PyMuPDF`     | PDF rendering (page images) and text        | 1.28.2         |
 | `pysubs2`     | subtitle conversion                         | 1.8.1          |
 | `python-xlib` | global drag and trigger detection (XInput2, XFixes, X11) | 0.33   |
+| `tomli`       | reading `config.toml` (stdlib `tomllib` from Python 3.11) | 2.5.0 |
+| `tomli-w`     | writing `config.toml`                       | 1.2.0          |
 | `ruff`        | dev: lint and format                        | 0.17.3         |
 | `pytest`      | dev: tests                                  | 9.2.0          |
 | `pytest-qt`   | dev: Qt widget tests                        | 4.5.0          |
