@@ -1,15 +1,21 @@
 """The wheel window: frameless, translucent, always on top, centered on a point.
 
-It is independent of how it is opened. Phase 4 drives it from the global drag watcher;
-``quince wheel-demo`` drives it directly. Keys arrive either as Qt key events (when the
-window has the keyboard) or through ``handle_key`` with X keysym names (raw X11 events).
+It is independent of how it is opened. The service drives it from the global drag
+watcher; ``quince wheel-demo`` drives it directly. Keys arrive either as Qt key events (when
+the window has the keyboard) or through ``handle_key`` with X keysym names (raw X11 events).
+
+Drag sessions (``hold=True`` in ``open_at``): a drag source may still drop after the wheel
+closed (GTK drops on Enter and on right or middle clicks). So a closed wheel stays mapped,
+paints nothing and swallows drops as Copy until ``release()`` is called at the end of the
+drag. Drops are acted on after ``drop_settle_ms``, because a cancel click (raw X11 input)
+and the drop it causes (XDND) can arrive in either order.
 """
 
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPointF, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import (
     QDragEnterEvent,
     QDragMoveEvent,
@@ -32,6 +38,7 @@ from quince.ui.wheel.state import KeyResult, WheelState
 log = logging.getLogger(__name__)
 
 OPEN_MS = 170
+DROP_SETTLE_MS = 80
 CLOSE_MS = 110
 SWITCH_MS = 200
 OPEN_SCALE = 0.86
@@ -67,9 +74,15 @@ class WheelWindow(QWidget):
     chosen = Signal(str, str, list)  # wheel, item id, dropped paths ([] without a drop)
     closed = Signal(str)  # reason; also sent after ``chosen`` (reason "chosen")
     highlight_changed = Signal(object)  # item id or None
+    drag_entered = Signal(list)  # local file paths the entering drag carries
 
     def __init__(
-        self, *, scheme: str = "system", animations: bool = True, grab_keyboard: bool = False
+        self,
+        *,
+        scheme: str = "system",
+        animations: bool = True,
+        grab_keyboard: bool = False,
+        drop_settle_ms: int = DROP_SETTLE_MS,
     ) -> None:
         super().__init__(
             None,
@@ -87,6 +100,7 @@ class WheelWindow(QWidget):
         self.scheme = scheme
         self.animations = animations
         self.grab_keyboard_on_open = grab_keyboard
+        self.drop_settle_ms = drop_settle_ms
         self.colors = wheel_colors(scheme)
         self.state = WheelState()
         self.content = WheelContent("convert")
@@ -94,6 +108,7 @@ class WheelWindow(QWidget):
         self._painter = WheelPainter()
         self._center = QPointF()  # global position of the wheel center
         self._open = False
+        self._hold = False  # keep mapped after closing, to swallow a late drop
         # Paths read at drag enter. Reading them again at drop is a second round trip to the
         # drag source, which blocks the GUI thread (up to Qt's 5 s timeout) if it stalls.
         self._drag_paths: list[str] = []
@@ -127,8 +142,22 @@ class WheelWindow(QWidget):
         index = self.state.highlighted
         return None if index is None else self.content.items[index].id
 
-    def open_at(self, pos: QPoint | QPointF, content: WheelContent) -> None:
-        """Show ``content`` centered on the global point ``pos`` (kept inside the screen)."""
+    @property
+    def center(self) -> QPointF:
+        """Global position of the wheel center (after keeping the wheel on screen)."""
+        return QPointF(self._center)
+
+    @property
+    def holding(self) -> bool:
+        """Closed but still mapped, swallowing drops until ``release()``."""
+        return self._hold and not self._open and self.isVisible()
+
+    def open_at(self, pos: QPoint | QPointF, content: WheelContent, *, hold: bool = False) -> None:
+        """Show ``content`` centered on the global point ``pos`` (kept inside the screen).
+
+        With ``hold``, the window stays mapped after closing until ``release()``.
+        """
+        self._hold = hold
         self._set_content(content)
         self._previous = None
         self._switch = 1.0
@@ -142,6 +171,13 @@ class WheelWindow(QWidget):
             self.grabKeyboard()
         self._animate(1.0, OPEN_MS, QEasingCurve.Type.OutCubic)
         log.debug("wheel %s opened with %d items", content.wheel, len(content.items))
+
+    def set_content(self, content: WheelContent) -> None:
+        """Replace the contents without animation (e.g. the dragged files became known)."""
+        if not self._open or content == self.content:
+            return
+        self._set_content(content)
+        self._place()
 
     def switch_to(self, content: WheelContent) -> None:
         """Replace the contents in place (another trigger was tapped)."""
@@ -170,6 +206,14 @@ class WheelWindow(QWidget):
         log.debug("wheel closed: %s", reason)
         self.closed.emit(reason)
         self._animate(0.0, CLOSE_MS, QEasingCurve.Type.InCubic)
+
+    def release(self) -> None:
+        """End of the drag: stop holding. Closes the wheel first if it is still open."""
+        self._hold = False
+        if self._open:
+            self.close_wheel("drag ended")
+        elif self._progress <= 0.0 or not self.animations:
+            self.hide()
 
     def handle_key(self, key: str) -> bool:
         """Handle a key by X keysym name. Returns False if the wheel does not use it."""
@@ -243,7 +287,7 @@ class WheelWindow(QWidget):
         self.update()
 
     def _on_anim_finished(self) -> None:
-        if not self._open and self._progress <= 0.0:
+        if not self._open and self._progress <= 0.0 and not self._hold:
             self.hide()
 
     def _on_switch(self, value: float) -> None:
@@ -331,14 +375,19 @@ class WheelWindow(QWidget):
             super().keyPressEvent(event)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        if not self._open or not event.mimeData().hasUrls():
+        if not self._open:
             event.ignore()
+            return
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            self.drag_entered.emit([])  # not a file drag (text, links, ...)
             return
         # Always COPY: the drag source must never delete or move the original.
         event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
         self._drag_paths = local_paths(event)
         self.pointer_at(event.position())
+        self.drag_entered.emit(list(self._drag_paths))
 
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
         event.setDropAction(Qt.DropAction.CopyAction)
@@ -354,11 +403,22 @@ class WheelWindow(QWidget):
         event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
         if not self._open:
+            log.debug("drop swallowed: wheel already closed")
             return
         paths, self._drag_paths = self._drag_paths or local_paths(event), []
         # The highlighted slice, not the one under the pointer: in keyboard mode the
         # pointer position is ignored (Enter drops wherever the pointer is).
-        if self.state.highlighted is None:
+        index = self.state.highlighted
+        if self.drop_settle_ms > 0:
+            QTimer.singleShot(self.drop_settle_ms, lambda: self._finish_drop(index, paths))
+        else:
+            self._finish_drop(index, paths)
+
+    def _finish_drop(self, index: int | None, paths: list[str]) -> None:
+        if not self._open:
+            log.debug("drop ignored: wheel closed while the drop settled")
+            return
+        if index is None:
             self.close_wheel("dropped outside slices")
         else:
-            self._choose(self.state.highlighted, paths)
+            self._choose(index, paths)

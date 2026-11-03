@@ -4,6 +4,12 @@ Runs on its own thread with its own X connection. Raw events reach the root wind
 even while another client (e.g. Nautilus during a drag) holds a pointer or keyboard
 grab, as long as the client announces XInput >= 2.1. python-xlib hardcodes 2.0 in
 ``xinput_query_version`` and does not parse raw events, so both are done here.
+
+When a drag starts, the watcher also asks the drag source which formats it offers
+(``TARGETS`` of ``XdndSelection``) and then for its ``text/uri-list``, so the wheel knows
+the files before it opens. Drag sources answer any client, not only the drop target. A
+source that offers no ``text/uri-list`` (a text drag from an editor or a browser) carries
+no files.
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ from __future__ import annotations
 import logging
 import select
 import threading
+import time
 from collections.abc import Callable, Iterable
 
 from Xlib import XK, X, display, error
@@ -18,11 +25,14 @@ from Xlib.ext import ge, xfixes, xinput
 from Xlib.protocol import rq
 
 from quince.input import drag
+from quince.input.xdnd import parse_uri_list
 
 log = logging.getLogger(__name__)
 
 XI_VERSION = (2, 2)
 POLL_INTERVAL_S = 0.2
+# Give up on reading the dragged files after this; the drag-enter data is used instead.
+FETCH_TIMEOUT_S = 1.0
 
 _RAW_EVENTS = (
     xinput.RawKeyPress,
@@ -90,6 +100,12 @@ class X11InputWatcher:
         self._keys: dict[int, str] = {}
         self._xdnd_atom = 0
         self._xfixes_event = -1
+        self._uri_list_atom = 0
+        self._fetch_property = 0
+        self._fetch_window = None
+        self._targets_atom = 0
+        self._fetch: tuple[int, float] | None = None  # (drag time, deadline)
+        self._fetch_stage = ""  # "targets", then "uri-list"
 
     def start(self) -> None:
         """Connect and start the watcher thread; raises ``X11Unavailable`` on failure."""
@@ -136,6 +152,10 @@ class X11InputWatcher:
             xfixes.XFixesSelectionNotify
         )
         self._xdnd_atom = disp.intern_atom("XdndSelection")
+        self._uri_list_atom = disp.intern_atom("text/uri-list")
+        self._targets_atom = disp.intern_atom("TARGETS")
+        self._fetch_property = disp.intern_atom("QUINCE_DRAG_FILES")
+        self._fetch_window = root.create_window(-10, -10, 1, 1, 0, X.CopyFromParent)
         disp.xfixes_select_selection_input(
             root, self._xdnd_atom, xfixes.XFixesSetSelectionOwnerNotifyMask
         )
@@ -164,6 +184,9 @@ class X11InputWatcher:
                     continue
                 while disp.pending_events():
                     self._handle(disp, disp.next_event())
+                if self._fetch is not None and time.monotonic() > self._fetch[1]:
+                    log.debug("no answer for the dragged files; waiting for drag enter")
+                    self._finish_fetch(None)
         except error.ConnectionClosedError:
             log.error("X11 connection closed; global input watcher stopped")
         except Exception:
@@ -184,6 +207,9 @@ class X11InputWatcher:
                 return
             log.debug("XdndSelection owner -> 0x%x", owner)
             translated = drag.DndStarted(event.selection_timestamp)
+        elif event.type == X.SelectionNotify:
+            self._on_selection_notify(disp, event)
+            return
         elif event.type == X.MappingNotify:
             disp.refresh_keyboard_mapping(event)
             self._refresh_keymap(disp)
@@ -194,6 +220,66 @@ class X11InputWatcher:
             return
         for signal in self._tracker.feed(translated):
             self._on_signal(signal)
+            if isinstance(signal, drag.DragStarted):
+                self._request_files(disp, signal.time)
+
+    # --- dragged files ----------------------------------------------------------
+
+    def _request_files(self, disp: display.Display, drag_time: int) -> None:
+        self._fetch = (drag_time, time.monotonic() + FETCH_TIMEOUT_S)
+        self._convert(disp, "targets", self._targets_atom)
+
+    def _convert(self, disp: display.Display, stage: str, target: int) -> None:
+        self._fetch_stage = stage
+        self._fetch_window.convert_selection(
+            self._xdnd_atom, target, self._fetch_property, X.CurrentTime
+        )
+        disp.flush()
+
+    def _read_reply(self, disp: display.Display):
+        reply = self._fetch_window.get_full_property(self._fetch_property, X.AnyPropertyType)
+        self._fetch_window.delete_property(self._fetch_property)
+        disp.flush()
+        return reply
+
+    def _on_selection_notify(self, disp: display.Display, event) -> None:
+        requestor = getattr(event.requestor, "id", event.requestor)
+        if self._fetch is None or requestor != self._fetch_window.id:
+            return
+        if self._fetch_stage == "targets":
+            self._on_targets(disp, event)
+            return
+        if event.property == X.NONE:
+            log.debug("drag source refused text/uri-list")
+            self._finish_fetch(None)
+            return
+        reply = self._read_reply(disp)
+        if reply is None or reply.property_type != self._uri_list_atom:
+            # INCR (very long lists) or an unexpected type: let drag enter provide the data.
+            self._finish_fetch(None)
+            return
+        data = reply.value if isinstance(reply.value, bytes) else bytes(reply.value)
+        self._finish_fetch(parse_uri_list(data))
+
+    def _on_targets(self, disp: display.Display, event) -> None:
+        if event.property == X.NONE:
+            # Some sources do not answer TARGETS; ask for the file list directly.
+            self._convert(disp, "uri-list", self._uri_list_atom)
+            return
+        reply = self._read_reply(disp)
+        targets = list(reply.value) if reply is not None and reply.format == 32 else None
+        if targets is None or self._uri_list_atom in targets:
+            self._convert(disp, "uri-list", self._uri_list_atom)
+        else:
+            log.debug("drag source offers no text/uri-list")
+            self._finish_fetch(())
+
+    def _finish_fetch(self, paths: tuple[str, ...] | None) -> None:
+        if self._fetch is None:
+            return
+        drag_time, self._fetch = self._fetch[0], None
+        log.debug("dragged files: %s", "unknown" if paths is None else len(paths))
+        self._on_signal(drag.DragFiles(drag_time, paths))
 
     def _translate_raw(self, disp: display.Display, evtype: int, data) -> drag.InputEvent | None:
         time, detail = data.time, data.detail

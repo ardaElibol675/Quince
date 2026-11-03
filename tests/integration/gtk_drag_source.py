@@ -10,6 +10,7 @@ Prints one line per event so the test can follow along:
     DRAG END <action>        the drag is over; <action> is what the target answered
 
 Usage: /usr/bin/python3 gtk_drag_source.py FILE...
+       /usr/bin/python3 gtk_drag_source.py --text TEXT   (a text drag, like from an editor)
 """
 
 import sys
@@ -20,7 +21,8 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
-URIS = [GLib.filename_to_uri(path, None) for path in sys.argv[1:]]
+TEXT = sys.argv[2] if sys.argv[1:2] == ["--text"] else None
+URIS = [] if TEXT is not None else [GLib.filename_to_uri(p, None) for p in sys.argv[1:]]
 
 
 def say(text):
@@ -28,7 +30,10 @@ def say(text):
 
 
 def on_data_get(_widget, _context, selection, _info, _time):
-    selection.set_uris(URIS)
+    if TEXT is not None:
+        selection.set_text(TEXT, -1)
+    else:
+        selection.set_uris(URIS)
 
 
 def on_data_delete(_widget, _context):
@@ -53,7 +58,14 @@ area = Gtk.EventBox()
 window.add(area)
 area.drag_source_set(
     Gdk.ModifierType.BUTTON1_MASK,
-    [Gtk.TargetEntry.new("text/uri-list", 0, 0)],
+    (
+        [
+            Gtk.TargetEntry.new("text/plain;charset=utf-8", 0, 0),
+            Gtk.TargetEntry.new("UTF8_STRING", 0, 1),
+        ]
+        if TEXT is not None
+        else [Gtk.TargetEntry.new("text/uri-list", 0, 0)]
+    ),
     Gdk.DragAction.COPY | Gdk.DragAction.MOVE,
 )
 area.connect("drag-data-get", on_data_get)

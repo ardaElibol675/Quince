@@ -114,7 +114,20 @@ class DragKey:
     time: int
 
 
-Signal = DragStarted | DragEnded | TriggerTapped | DragKey | DragCancel
+@dataclass(frozen=True)
+class DragFiles:
+    """What the drag carries, read from ``XdndSelection`` right after the drag started.
+
+    ``drag_time`` matches the ``DragStarted`` of the same drag. ``paths`` is None when the
+    data could not be read (the wheel then waits for the drag-enter data), and empty when
+    the drag carries no local files (text, web links, ...).
+    """
+
+    drag_time: int
+    paths: tuple[str, ...] | None
+
+
+Signal = DragStarted | DragEnded | TriggerTapped | DragKey | DragCancel | DragFiles
 
 
 class DragTracker:

@@ -1,7 +1,8 @@
-"""End-to-end drag + tap + drop in a nested X server (Xvfb, or Xephyr when opted in).
+"""End-to-end drag + tap + wheel + drop in a nested X server (Xvfb, or Xephyr when opted in).
 
-A GTK3 drag source stands in for Nautilus 42 (same drag-source code), so GTK's behavior
-during a drag is covered too: Enter drops at the pointer, right click drops, Esc cancels.
+``quince service`` runs against a GTK3 drag source that stands in for Nautilus 42 (same
+drag-source code), so GTK's behavior during a drag is covered too: Enter drops at the
+pointer, a right or middle click drops, Esc cancels, Shift held at the drop proposes Move.
 
 Input is injected with XTest, which goes through the real input pipeline and produces
 raw events (``xdotool mousemove`` warps the pointer and would not).
@@ -10,6 +11,7 @@ raw events (``xdotool mousemove`` warps the pointer and would not).
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,12 +21,16 @@ from pathlib import Path
 
 import pytest
 
+from quince.ui.wheel import geometry
+
 pytestmark = pytest.mark.integration
 
 HERE = Path(__file__).resolve().parent
 SYSTEM_PYTHON = "/usr/bin/python3"
 DRAG_START = (100, 100)
-OVERLAY_AT = (150, 150)  # where the pointer is when the trigger is tapped
+WHEEL_AT = (400, 300)  # where the pointer is when the trigger is tapped
+PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 24
+PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
 
 
 def _server_command(number: int) -> list[str] | None:
@@ -62,7 +68,7 @@ def _wait_for(predicate, timeout=10.0, step=0.05) -> bool:
 
 
 class Session:
-    """A nested X server running ``quince spike-drag`` and, optionally, a GTK drag source."""
+    """A nested X server running ``quince service`` and, optionally, a GTK drag source."""
 
     def __init__(self, display_name: str, disp, tmp_path: Path) -> None:
         self.disp = disp
@@ -73,26 +79,39 @@ class Session:
             "QT_QPA_PLATFORM": "xcb",
             "GDK_BACKEND": "x11",
             "NO_AT_BRIDGE": "1",
+            "QUINCE_INSTANCE": f"quince-test-{display_name.strip(':')}-{os.getpid()}",
+            "XDG_CONFIG_HOME": str(tmp_path / "config"),
         }
         self.env.pop("PYTHONPATH", None)
-        self.spike_log = tmp_path / "spike.log"
+        self.service_log = tmp_path / "service.log"
+        self.service: subprocess.Popen | None = None
         self._procs: list[subprocess.Popen] = []
         self._source_lines: list[str] = []
 
     # --- processes ----------------------------------------------------------
 
-    def start_spike(self) -> None:
-        with self.spike_log.open("w") as log_file:
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "quince", "spike-drag", "-v"],
+    def quince(self, *args: str, **kwargs) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, "-m", "quince", *args],
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            **kwargs,
+        )
+
+    def start_service(self) -> None:
+        with self.service_log.open("w") as log_file:
+            self.service = subprocess.Popen(
+                [sys.executable, "-m", "quince", "service", "-v"],
                 env=self.env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
             )
-        self._procs.append(proc)
-        assert _wait_for(lambda: "spike-drag running" in self.log), self.log
+        self._procs.append(self.service)
+        assert _wait_for(lambda: "Quince service running" in self.log), self.log
 
-    def start_source(self, *paths: Path) -> None:
+    def start_source(self, *paths: Path | str) -> None:
         proc = subprocess.Popen(
             [SYSTEM_PYTHON, str(HERE / "gtk_drag_source.py"), *map(str, paths)],
             env=self.env,
@@ -121,7 +140,7 @@ class Session:
 
     @property
     def log(self) -> str:
-        return self.spike_log.read_text()
+        return self.service_log.read_text()
 
     @property
     def source(self) -> list[str]:
@@ -143,11 +162,18 @@ class Session:
         xtest.fake_input(self.disp, *args, **kwargs)
         self.disp.sync()
 
-    def move(self, x: int, y: int, pause: float = 0.06) -> None:
+    def move(self, x: float, y: float, pause: float = 0.06) -> None:
         from Xlib import X
 
-        self._fake(X.MotionNotify, x=x, y=y)
+        self._fake(X.MotionNotify, x=round(x), y=round(y))
         time.sleep(pause)
+
+    def glide(self, x: float, y: float, steps: int = 8) -> None:
+        """Move in small steps, so the drag source sends positions along the way."""
+        pointer = self.disp.screen().root.query_pointer()
+        x0, y0 = pointer.root_x, pointer.root_y
+        for step in range(1, steps + 1):
+            self.move(x0 + (x - x0) * step / steps, y0 + (y - y0) * step / steps)
 
     def button(self, number: int, down: bool) -> None:
         from Xlib import X
@@ -171,18 +197,19 @@ class Session:
         """Press on the source and move far enough for GTK and Quince to start a drag."""
         self.move(*DRAG_START)
         self.button(1, True)
-        x0, y0 = DRAG_START
-        x1, y1 = OVERLAY_AT
-        for step in range(1, 11):
-            self.move(x0 + (x1 - x0) * step // 10, y0 + (y1 - y0) * step // 10)
+        self.glide(*WHEEL_AT, steps=10)
         self.wait_log("drag started")
 
-    def hover_overlay(self) -> None:
-        """Small moves so GTK sends XdndPosition to the overlay that just appeared."""
-        x, y = OVERLAY_AT
-        for d in (2, 4, 6, 8):
-            self.move(x + d, y + d)
-        self.wait_log("drag enter")
+    def open_wheel(self, keysym: str, wheel: str) -> tuple[float, float, str]:
+        """Tap a trigger; returns the wheel center and the logged contents."""
+        self.tap(keysym)
+        self.wait_log(f"wheel {wheel} opened at")
+        match = re.search(rf"wheel {wheel} opened at (-?\d+),(-?\d+): (.*)", self.log)
+        return float(match.group(1)), float(match.group(2)), match.group(3)
+
+    def slice_point(self, center: tuple[float, float], count: int, index: int):
+        s = geometry.layout(count).slices[index]
+        return center[0] + s.label_x, center[1] + s.label_y
 
 
 @pytest.fixture
@@ -200,7 +227,7 @@ def session(tmp_path):
     disp = display.Display(f":{number}")
     s = Session(f":{number}", disp, tmp_path)
     try:
-        s.start_spike()
+        s.start_service()
         yield s
     finally:
         s.stop()
@@ -209,12 +236,19 @@ def session(tmp_path):
         server.wait(5)
 
 
+def _write(path: Path, data: bytes) -> Path:
+    path.write_bytes(data)
+    return path
+
+
 @pytest.fixture
-def files(tmp_path):
-    paths = [tmp_path / "one.png", tmp_path / "two.pdf"]
-    for path in paths:
-        path.write_text(f"content of {path.name}\n")
-    return paths
+def images(tmp_path):
+    return [_write(tmp_path / "one.png", PNG), _write(tmp_path / "two.png", PNG)]
+
+
+@pytest.fixture
+def mixed(tmp_path):
+    return [_write(tmp_path / "one.png", PNG), _write(tmp_path / "two.pdf", PDF)]
 
 
 needs_gtk = pytest.mark.skipif(not _has_system_gtk3(), reason="needs system python3-gi with GTK 3")
@@ -222,95 +256,143 @@ needs_gtk = pytest.mark.skipif(not _has_system_gtk3(), reason="needs system pyth
 
 def assert_untouched(paths):
     for path in paths:
-        assert path.read_text() == f"content of {path.name}\n"
+        assert path.read_bytes() == (PNG if path.suffix == ".png" else PDF)
 
 
 @needs_gtk
-def test_taps_switch_wheel_and_drop_with_shift_held_is_copy(session, files):
-    session.start_source(*files)
+def test_wheel_shows_registry_contents_switches_and_drop_with_shift_is_copy(session, images):
+    session.start_source(*images)
     session.begin_drag()
-    session.tap("Shift_L")
-    session.wait_log("overlay 'convert' shown")
+    session.wait_log("dragged: 2 files, image (PNG)")  # read before any wheel is shown
+    cx, cy, contents = session.open_wheel("Shift_L", "convert")
+    assert contents == "JPG, WebP"
     session.tap("Shift_L", hold=0.6)  # too long: not a tap
     session.tap("Control_L")
-    session.wait_log("tap Control_L -> tools")
-    session.hover_overlay()
+    session.wait_log("wheel switched to tools: empty (Nothing available)")
+    session.tap("Shift_L")
+    session.wait_log("wheel switched to convert: JPG, WebP")
 
+    session.glide(*session.slice_point((cx, cy), 2, 1))  # the WebP slice
     session.key("Shift_L", True)  # Shift held at drop: GTK proposes Move
     time.sleep(0.2)
     session.button(1, False)
     session.key("Shift_L", False)
 
-    session.wait_log("dropped on 'tools'")
+    session.wait_log("chosen convert.image.webp for")
     session.wait_source("DRAG END")
-    assert f"dropped on 'tools': {[str(p) for p in files]}" in session.log
-    assert session.log.count("tap Shift_L") == 1, "the long press must not count as a tap"
+    assert f"chosen convert.image.webp for {[str(p) for p in images]}" in session.log
+    switches = session.log.count("controller: wheel switched")
+    assert switches == 2, "the long press must not count as a tap"
     assert "DRAG END copy" in session.source
     assert "DELETE REQUESTED" not in session.source
-    assert_untouched(files)
+    assert_untouched(images)
 
 
 @needs_gtk
-def test_enter_drops_on_overlay(session, files):
-    session.start_source(files[0])
+def test_keyboard_choice_without_moving_the_mouse(session, images):
+    """The 1 px nudge makes the wheel the drop target, so GTK's Enter drop lands on it."""
+    session.start_source(images[0])
     session.begin_drag()
-    session.tap("Shift_L")
-    session.hover_overlay()
-    session.tap("Left")
-    session.wait_log("key during drag: Left")
+    session.open_wheel("Shift_L", "convert")
+    session.tap("Right")
+    session.tap("Right")
     session.tap("Return")
-    session.wait_log(f"dropped on 'convert': ['{files[0]}']")
-    session.button(1, False)
+    session.wait_log(f"chosen convert.image.webp for ['{images[0]}']")
     session.wait_source("DRAG END")
-    assert "DRAG END copy" in session.source
+    assert "DRAG END copy" in session.source  # swallowed by the closed wheel
+    session.tap("Shift_L")
+    session.wait_log("tap convert ignored")  # one wheel per drag
+    session.button(1, False)
+    session.wait_log("drag ended")
+    assert session.log.count("controller: chosen ") == 1
     assert "DELETE REQUESTED" not in session.source
+    assert_untouched(images[:1])
 
 
 @needs_gtk
 @pytest.mark.parametrize("cancel_button", [3, 2])
-def test_right_or_middle_click_cancels(session, files, cancel_button):
-    session.start_source(files[0])
+def test_right_or_middle_click_cancels(session, images, cancel_button):
+    session.start_source(images[0])
     session.begin_drag()
-    session.tap("Alt_L")
-    session.hover_overlay()
+    session.open_wheel("Alt_L", "actions")
     session.button(cancel_button, True)
     session.button(cancel_button, False)
-    session.wait_log("overlay cancelled")
+    session.wait_log("wheel closed: cancel click")
     session.button(1, False)
     session.wait_source("DRAG END")
     time.sleep(0.5)
-    assert "dropped on" not in session.log
+    assert "chosen " not in session.log
     assert "DELETE REQUESTED" not in session.source
-    assert_untouched(files[:1])
+    assert_untouched(images[:1])
 
 
 @needs_gtk
-def test_escape_closes_overlay_and_cancels_drag(session, files):
-    session.start_source(files[0])
+def test_escape_closes_wheel_and_cancels_drag(session, images):
+    session.start_source(images[0])
     session.begin_drag()
-    session.tap("Control_L")
-    session.hover_overlay()
+    session.open_wheel("Control_L", "tools")
     session.tap("Escape")
-    session.wait_log("overlay closed: escape")
+    session.wait_log("wheel closed: escape")
     session.wait_source("DRAG FAILED")
     session.button(1, False)
-    assert "dropped on" not in session.log
+    assert "chosen " not in session.log
 
 
 @needs_gtk
-def test_scroll_during_drag_does_not_cancel(session, files):
-    session.start_source(files[0])
+def test_mixed_selection_gets_only_actions(session, mixed):
+    session.start_source(*mixed)
     session.begin_drag()
-    session.tap("Shift_L")
-    session.hover_overlay()
+    session.wait_log("dragged: 2 files, mixed types")
+    _, _, contents = session.open_wheel("Shift_L", "convert")
+    assert contents == "empty (Only file actions for folders and mixed files)"
+    session.tap("Alt_L")
+    session.wait_log("wheel switched to actions: Copy Path")
+    match = re.search(r"wheel convert opened at (\d+),(\d+)", session.log)
+    center = (float(match.group(1)), float(match.group(2)))
+    session.glide(*session.slice_point(center, 1, 0))
+    session.button(1, False)
+    session.wait_log("chosen action.copy_path for")
+    session.wait_source("DRAG END copy")
+
+
+@needs_gtk
+def test_drop_in_center_closes_without_choosing(session, images):
+    session.start_source(images[0])
+    session.begin_drag()
+    cx, cy, _ = session.open_wheel("Shift_L", "convert")
+    session.glide(cx + 3, cy + 3, steps=3)
+    session.button(1, False)
+    session.wait_log("wheel closed: dropped outside slices")
+    time.sleep(0.3)
+    assert "chosen " not in session.log
+
+
+@needs_gtk
+def test_scroll_during_drag_does_not_cancel(session, images):
+    session.start_source(images[0])
+    session.begin_drag()
+    cx, cy, _ = session.open_wheel("Shift_L", "convert")
     session.button(5, True)
     session.button(5, False)
+    session.glide(*session.slice_point((cx, cy), 2, 0))
     session.button(1, False)
-    session.wait_log("dropped on 'convert'")
+    session.wait_log("chosen convert.image.jpg")
     assert "cancel" not in session.log
 
 
-def test_button_drag_without_dnd_does_not_open_overlay(session):
+@needs_gtk
+def test_text_drag_opens_no_wheel(session):
+    """A text drag (editor, browser) offers no text/uri-list, so no wheel opens."""
+    session.start_source("--text", "some selected text")
+    session.begin_drag()
+    session.wait_log("drag carries no local files")
+    session.tap("Shift_L")
+    session.wait_log("tap convert ignored")
+    session.button(1, False)
+    assert "opened at" not in session.log
+
+
+def test_button_drag_without_dnd_opens_nothing(session):
     session.move(400, 300)
     session.button(1, True)
     for x in (410, 440, 480):
@@ -319,4 +401,15 @@ def test_button_drag_without_dnd_does_not_open_overlay(session):
     session.button(1, False)
     time.sleep(0.5)
     assert "drag started" not in session.log
-    assert "overlay" not in session.log
+    assert "wheel" not in session.log
+
+
+def test_single_instance_and_stop(session):
+    second = session.quince("service")
+    assert second.returncode == 0
+    assert "already running" in second.stdout
+    stopped = session.quince("service", "--stop")
+    assert stopped.returncode == 0 and "stopped" in stopped.stdout
+    assert session.service.wait(5) == 0
+    assert "Quince service stopped" in session.log
+    assert session.quince("service", "--stop").returncode == 1  # nothing running now

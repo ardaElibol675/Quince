@@ -26,7 +26,9 @@ Install everything on Ubuntu 22.04:
 sudo apt install python3-venv libxcb-cursor0 ffmpeg libreoffice pandoc librsvg2-bin p7zip-full unrar
 ```
 
-Expected in later phases (not needed yet): `python3-nautilus` (Phase 11, Nautilus extension).
+Expected in later phases (not needed yet): `python3-nautilus` (Phase 11, Nautilus extension);
+`tesseract-ocr` and `tesseract-ocr-tur` (Phase 10, OCR for scanned PDFs); Python package
+`pymupdf4llm` pinned to an exact version (Phase 10, PDF → Markdown).
 
 Development only (optional, both installed on the dev machine): `xvfb` runs the nested-X
 drag tests invisibly (`tests/integration/test_x11_drag.py`), and `python3-gi` with GTK 3

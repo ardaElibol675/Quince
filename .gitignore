@@ -16,6 +16,8 @@ htmlcov/
 
 # Generated test fixtures (recreate with scripts/make_fixtures.py)
 tests/fixtures/generated/
+# The user's own sample files for golden tests; never committed
+tests/fixtures/private/
 
 # Packaging outputs
 packaging/deb/build/

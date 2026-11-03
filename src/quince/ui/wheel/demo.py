@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from itertools import cycle, islice
 from pathlib import Path
 
@@ -76,25 +76,15 @@ def demo_content(wheel: str, count: int) -> WheelContent:
     return WheelContent(wheel, tuple(items))
 
 
-def file_contents(paths: Sequence[str]) -> dict[str, WheelContent]:
-    """Real registry contents for these files, as Phase 4 will show them."""
+def file_contents(paths: Sequence[str]) -> Mapping[str, WheelContent]:
+    """Real registry contents for these files, as the service shows them."""
     from quince.core import config, deps
-    from quince.core.operations import Kind
     from quince.core.registry import discover
     from quince.core.selection import Selection
-    from quince.ui.wheel.model import content_from_operations
+    from quince.ui.wheel.model import build_contents
 
     selection = Selection.from_paths(Path(p).absolute() for p in paths)
-    registry, available, cfg = discover(), deps.Availability.probe(), config.load()
-    contents = {}
-    for wheel in WHEEL_TITLES:
-        kind = Kind.from_wheel(wheel)
-        ops = registry.query(selection, kind, available=available, prefs=cfg.wheel(wheel))
-        message = "Nothing available"
-        if kind is not Kind.ACTION and not selection.is_uniform:
-            message = "Only file actions for folders and mixed selections"
-        contents[wheel] = content_from_operations(wheel, ops, message)
-    return contents
+    return build_contents(selection, discover(), deps.Availability.probe(), config.load())
 
 
 class _DemoKeys(QObject):
@@ -124,7 +114,7 @@ class _DemoKeys(QObject):
 
 class Demo:
     def __init__(
-        self, contents: dict[str, WheelContent], wheel: str, *, once: bool, grab: bool, **kw
+        self, contents: Mapping[str, WheelContent], wheel: str, *, once: bool, grab: bool, **kw
     ):
         self.contents = contents
         self.current = wheel

@@ -48,7 +48,8 @@ QT_QPA_PLATFORM=offscreen pytest               # tests
 python scripts/make_fixtures.py                # generate sample files into tests/fixtures/generated/
 python scripts/check_formats.py                # probe real format support on this machine
 QUINCE_NESTED_X=1 pytest tests/integration/test_x11_drag.py   # drag tests in Xephyr (auto with Xvfb)
-quince spike-drag -v                           # Phase 1 debug overlay for drag + tap
+quince service -v                              # run the background service (drag + tap = wheel)
+quince service --stop                          # stop it
 quince wheel-demo --n 7                        # preview the wheel (Shift/Ctrl/Alt tap = switch, Q = quit)
 quince list-ops FILE...                        # what each wheel offers for these files/folders
 quince config                                  # print the effective settings (~/.config/quince/config.toml)

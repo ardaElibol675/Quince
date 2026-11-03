@@ -18,7 +18,7 @@ from quince.ui.wheel.window import WheelWindow
 
 @pytest.fixture
 def wheel(qtbot):
-    w = WheelWindow(animations=False)
+    w = WheelWindow(animations=False, drop_settle_ms=0)
     qtbot.addWidget(w)
     events = {"chosen": [], "closed": []}
     w.chosen.connect(lambda *args: events["chosen"].append(args))

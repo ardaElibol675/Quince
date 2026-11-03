@@ -19,8 +19,8 @@ X server ──raw XI2 events + XFixes──▶ X11InputWatcher (own thread, own
 
 - `src/quince/input/x11.py` is the only code that talks to X11 for input.
 - `src/quince/input/drag.py` has no X11 or Qt imports. All the rules live there.
-- `quince spike-drag` (`src/quince/ui/spike/`) wires both to a debug overlay. Phase 4 replaces
-  the overlay with the wheel.
+- Phase 1 wired both to a debug overlay (`quince spike-drag`). Since Phase 4 the service
+  (`quince service`) wires them to the wheel; see "Service and drag flow" below.
 
 ### How a drag is recognized
 
@@ -282,4 +282,75 @@ triggers and tap length from the config.
   Move proposed, switching, animations) runs under `QT_QPA_PLATFORM=offscreen`.
 - The offscreen platform has no icon theme, so a test installs a tiny theme to cover the icon
   path. The keyboard grab and real Yaru icons were checked in Xvfb with XTest keys.
+
+## Service and drag flow (Phase 4)
+
+`quince service` (`src/quince/app.py`) runs without a main window: the X11 watcher, the wheel,
+`DragWheelController` (`src/quince/ui/wheel/controller.py`) and a single-instance socket.
+
+```
+X11InputWatcher ── DragStarted ─▶ controller: new session
+       │  asks the drag source for text/uri-list (XdndSelection)
+       └──────── DragFiles ────▶ worker thread: detect types, query registry, build contents
+TriggerTapped ─▶ open the wheel at the pointer (pending until contents arrive), nudge pointer
+DragKey / DragCancel ─▶ wheel keys / close
+WheelWindow ── drag_entered(paths) ─▶ fallback when the source did not answer
+            ── chosen(wheel, id, paths) ─▶ operation_chosen(op, selection) ─▶ stub: log + toast
+DragEnded ─▶ after 400 ms: release the wheel
+```
+
+### Knowing the files before the wheel opens
+
+- When a drag starts, the watcher asks for `TARGETS` of `XdndSelection` from a small unmapped
+  window, then for `text/uri-list`. Drag sources answer any client, not only the drop target.
+  GTK3 (the Nautilus drag code) answers in about 2 ms, so the wheel usually opens with its
+  final contents. A source whose `TARGETS` lack `text/uri-list` (a text drag from VS Code,
+  a browser, an editor) carries no files: no wheel opens. A source that does not answer
+  `TARGETS` is asked for `text/uri-list` directly.
+- No answer within 1 s, a refusal or an `INCR` transfer: the wheel opens in a pending state
+  ("Reading files…") and uses the paths from its own drag-enter event instead.
+- An answer without local files (web links) means no wheel for this drag. A drag-enter
+  without files closes a pending wheel. (Found in manual testing: a text drag from VS Code
+  left the wheel stuck in "Reading files…", because the drag-enter without files was ignored
+  silently.)
+- Type detection and the registry query run on a worker thread (Hard Rule: no long work on the
+  GUI thread). Config and dependency availability are read again for every drag, so changes
+  apply without a restart.
+
+### The pointer nudge
+
+A newly mapped window under a still pointer is not the drop target yet: GTK only looks for a
+target when the pointer moves. Without a move, Enter drops on the window that was under the
+pointer before the wheel appeared — in real use a Nautilus folder, which would copy or move
+the file there. Right after opening, the controller warps the pointer 1 px and back
+(`QCursor.setPos`). Warping produces core motion events (not raw ones, so the drag tracker is
+unaffected), GTK re-targets the wheel at once and sends XdndEnter with the data. Measured in
+Xvfb: without the nudge, Enter dropped on no target; with it, on the wheel.
+
+### One wheel per drag, and holding
+
+- Once the wheel closed in a drag, further taps are ignored until the next drag.
+- While a drag runs, a closed wheel stays mapped, paints nothing and answers every drop with
+  Copy, ignoring it. This covers GTK's drop on Enter after a keyboard choice, and its drop on a
+  right or middle click. It is released 400 ms after the drag ended.
+- Drops on an open wheel are acted on after 80 ms, so a cancel click that arrives just after
+  the drop still wins. The drop chooses the highlighted slice.
+
+### Single instance
+
+- A `QLocalServer` named `quince-<uid>` (user-only access). `quince service` first sends
+  `ping`; if a service answers, it prints "already running" and exits. `quince service --stop`
+  sends `quit`. A socket file left by a crashed service is removed when nobody answers.
+- `QUINCE_INSTANCE` overrides the name; the nested-X tests use it so they never talk to a
+  service running in the real session.
+- Commands are one line per request. Phase 11 adds `open` for the CLI and the Nautilus menu.
+
+### Testing notes
+
+- `tests/integration/test_x11_drag.py` now runs the real service against the GTK3 source:
+  registry contents at open, switching, Shift held at the drop (Copy), keyboard choice without
+  moving the mouse (nudge), right/middle click, Esc, mixed selections, center drop, scroll,
+  non-DnD button drags and the single-instance commands.
+- `tests/ui/test_wheel_controller.py` covers the controller's state machine with a synchronous
+  worker and no real pointer.
 

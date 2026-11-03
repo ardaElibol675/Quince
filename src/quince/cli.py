@@ -152,11 +152,7 @@ def cmd_config(args: argparse.Namespace) -> int:
 def cmd_wheel_demo(args: argparse.Namespace) -> int:
     from quince.ui.wheel import demo
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    _setup_logging(args.verbose)
     return demo.run(
         count=args.n,
         wheel=args.wheel,
@@ -168,20 +164,23 @@ def cmd_wheel_demo(args: argparse.Namespace) -> int:
     )
 
 
-def cmd_spike_drag(args: argparse.Namespace) -> int:
-    from quince.ui.spike import app
-
+def _setup_logging(verbose: bool) -> None:
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
+        level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    triggers = config.load().triggers
-    return app.run(
-        triggers=triggers.keys,
-        max_tap_ms=args.tap_ms or triggers.max_tap_ms,
-        require_dnd=not args.any_drag,
-    )
+
+
+def cmd_service(args: argparse.Namespace) -> int:
+    from quince import app
+
+    if args.stop:
+        answer = app.send_command("quit")
+        print("Quince stopped." if answer is not None else "Quince is not running.")
+        return 0 if answer is not None else 1
+    _setup_logging(args.verbose)
+    return app.run_service()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -221,15 +220,10 @@ def build_parser() -> argparse.ArgumentParser:
     wheel.add_argument("-v", "--verbose", action="store_true")
     wheel.set_defaults(func=cmd_wheel_demo)
 
-    spike = sub.add_parser("spike-drag", help="Phase 1 spike: debug overlay for drag + tap")
-    spike.add_argument("--tap-ms", type=int, help="max tap length (default: from config)")
-    spike.add_argument(
-        "--any-drag",
-        action="store_true",
-        help="count any button-1 drag, not only file drag-and-drop (for debugging)",
-    )
-    spike.add_argument("-v", "--verbose", action="store_true", help="log raw keys during drags")
-    spike.set_defaults(func=cmd_spike_drag)
+    service = sub.add_parser("service", help="run the background service (drag + tap wheel)")
+    service.add_argument("--stop", action="store_true", help="stop the running service")
+    service.add_argument("-v", "--verbose", action="store_true", help="debug logging")
+    service.set_defaults(func=cmd_service)
     return parser
 
 
