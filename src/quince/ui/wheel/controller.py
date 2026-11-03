@@ -147,7 +147,7 @@ class DragWheelController(QObject):
         self._dragging = False
         log.info("drag ended")
         session = self._session
-        QTimer.singleShot(self._grace_ms, lambda: self._release(session))
+        QTimer.singleShot(self._grace_ms, self, lambda: self._release(session))
 
     def _release(self, session: int | None) -> None:
         if session == self._session and not self._dragging:

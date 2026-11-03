@@ -354,3 +354,58 @@ Xvfb: without the nudge, Enter dropped on no target; with it, on the wheel.
 - `tests/ui/test_wheel_controller.py` covers the controller's state machine with a synchronous
   worker and no real pointer.
 
+## Jobs and feedback (Phase 5)
+
+### Job engine (`src/quince/core/jobs.py`)
+
+- `JobQueue` runs `Operation.run(ctx)` on worker threads (2 by default) and reports a
+  `JobSnapshot` on every change: queued → running (progress 0..1 or unknown, message) →
+  succeeded (outputs) / failed (short reason) / cancelled.
+- Outputs: `ctx.new_output(source, extension=, suffix=, directory=)` reserves the final name
+  (collision-safe, shared across all running jobs) and returns a temporary path in the same
+  folder, `.quince-tmp-<random>-<final name>`, which keeps the extension for tools such as
+  ffmpeg that look at it. When `run` returns, every output is moved into place with
+  `renameat2(RENAME_NOREPLACE)`: atomic and never over an existing file. If the name was taken
+  meanwhile, the next free one is used. All outputs move or none do.
+- Failure, cancellation and timeouts delete the temporary outputs: no partial files.
+- Cancellation is cooperative: `ctx.check()` raises, and the process wrapper kills external
+  programs. Timeouts (`timeout_s`) are turned into cancellation by a watchdog thread and
+  reported as a failure ("Took longer than N s").
+- Progress events are throttled to about 10 per second per job.
+- Writing into a folder Quince cannot write to fails with "Cannot write to <folder>".
+
+### External programs (`src/quince/backends/process.py`, `ffmpeg.py`)
+
+- `process.run(cmd, ctx, timeout_s=, on_stdout=, on_stderr=)`: reads output line by line,
+  keeps the last 40 lines of each stream, runs the program in its own process group so
+  children die with it on cancel (SIGTERM, then SIGKILL after 3 s), and never passes
+  `PYTHONPATH` on. A failure becomes `BackendError` with a short reason — the program name and
+  its last stderr line — while the full stderr tail goes to the log.
+- ffmpeg runs with `-nostdin -n -progress pipe:1 -nostats`; `progress_parser` turns
+  `out_time_us` into a fraction of the duration from `ffprobe`.
+
+### Feedback UI (`src/quince/ui/feedback/`)
+
+- `JobsPanel`: a frameless, always-on-top stack of cards at the bottom-right of the screen
+  under the pointer. Running cards show a progress bar (busy when unknown) and Cancel; success
+  cards show the output name and "Show in Files" (8 s); error cards the short reason (20 s);
+  cancelled cards 3 s. Every finished card has a close button.
+- "Show in Files" calls `org.freedesktop.FileManager1.ShowItems` asynchronously and falls back
+  to opening the folder (`src/quince/integrations/files.py`). Phase 6's action reuses it.
+- Operations without `run` still show the Phase 4 stub toast.
+
+### Logging and environment
+
+- `quince service` logs to the console and to `~/.local/state/quince/quince.log` (rotated at
+  1 MB, 3 backups; `$XDG_STATE_HOME` honored).
+- `requirements.lock` pins every Python package; `scripts/lock_deps.py` writes or checks it.
+- `quince/__init__.py` strips `PYTHONPATH` entries from `sys.path` before any dependency is
+  imported, and removes the variable for child processes.
+- Found while testing: Qt timers created with a lambda outlive their widget; every delayed
+  callback now passes its owner as the timer context.
+
+### Trying it
+
+`quince service --demo-ops` adds "Slow Demo" (6 s, writes `<name>-demo.txt`) and "Fail
+Demo" (breaks halfway) to the Tools wheel. A nested-X test runs both from the wheel.
+

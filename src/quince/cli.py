@@ -164,12 +164,10 @@ def cmd_wheel_demo(args: argparse.Namespace) -> int:
     )
 
 
-def _setup_logging(verbose: bool) -> None:
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+def _setup_logging(verbose: bool, *, to_file: bool = False) -> None:
+    from quince.core.logs import setup_logging
+
+    setup_logging(verbose, to_file=to_file)
 
 
 def cmd_service(args: argparse.Namespace) -> int:
@@ -179,8 +177,8 @@ def cmd_service(args: argparse.Namespace) -> int:
         answer = app.send_command("quit")
         print("Quince stopped." if answer is not None else "Quince is not running.")
         return 0 if answer is not None else 1
-    _setup_logging(args.verbose)
-    return app.run_service()
+    _setup_logging(args.verbose, to_file=True)
+    return app.run_service(demo_ops=args.demo_ops)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -223,6 +221,9 @@ def build_parser() -> argparse.ArgumentParser:
     service = sub.add_parser("service", help="run the background service (drag + tap wheel)")
     service.add_argument("--stop", action="store_true", help="stop the running service")
     service.add_argument("-v", "--verbose", action="store_true", help="debug logging")
+    service.add_argument(
+        "--demo-ops", action="store_true", help="add two demo jobs to the Tools wheel (testing)"
+    )
     service.set_defaults(func=cmd_service)
     return parser
 

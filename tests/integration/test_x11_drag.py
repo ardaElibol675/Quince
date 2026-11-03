@@ -81,6 +81,7 @@ class Session:
             "NO_AT_BRIDGE": "1",
             "QUINCE_INSTANCE": f"quince-test-{display_name.strip(':')}-{os.getpid()}",
             "XDG_CONFIG_HOME": str(tmp_path / "config"),
+            "XDG_STATE_HOME": str(tmp_path / "state"),
         }
         self.env.pop("PYTHONPATH", None)
         self.service_log = tmp_path / "service.log"
@@ -100,10 +101,10 @@ class Session:
             **kwargs,
         )
 
-    def start_service(self) -> None:
+    def start_service(self, *extra: str) -> None:
         with self.service_log.open("w") as log_file:
             self.service = subprocess.Popen(
-                [sys.executable, "-m", "quince", "service", "-v"],
+                [sys.executable, "-m", "quince", "service", "-v", *extra],
                 env=self.env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
@@ -213,7 +214,7 @@ class Session:
 
 
 @pytest.fixture
-def session(tmp_path):
+def session(request, tmp_path):
     number = _free_display()
     command = _server_command(number)
     if command is None:
@@ -227,7 +228,7 @@ def session(tmp_path):
     disp = display.Display(f":{number}")
     s = Session(f":{number}", disp, tmp_path)
     try:
-        s.start_service()
+        s.start_service(*getattr(request, "param", ()))
         yield s
     finally:
         s.stop()
@@ -413,3 +414,29 @@ def test_single_instance_and_stop(session):
     assert session.service.wait(5) == 0
     assert "Quince service stopped" in session.log
     assert session.quince("service", "--stop").returncode == 1  # nothing running now
+
+
+@needs_gtk
+@pytest.mark.parametrize("session", [("--demo-ops",)], indirect=True)
+def test_demo_jobs_from_the_wheel(session, images):
+    """A job chosen on the wheel runs; success writes the output, failure leaves nothing."""
+    session.start_source(images[0])  # the GTK source quits after one drag
+    session.begin_drag()
+    _, _, contents = session.open_wheel("Control_L", "tools")
+    assert contents == "Slow Demo, Fail Demo"
+    session.tap("Right")
+    session.tap("Return")
+    session.button(1, False)
+    session.wait_log("job 1 succeeded", timeout=20)
+    assert (images[0].parent / "one-demo.txt").exists()
+
+    session.start_source(images[0])
+    session.begin_drag()
+    session.open_wheel("Control_L", "tools")
+    session.tap("End")
+    session.tap("Return")
+    session.button(1, False)
+    session.wait_log("job 2 failed: Demo failure", timeout=20)
+    names = sorted(p.name for p in images[0].parent.iterdir() if p.is_file())
+    assert names == ["one-demo.txt", "one.png", "service.log", "two.png"]  # no partial file
+    assert (session.tmp_path / "state" / "quince" / "quince.log").exists()

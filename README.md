@@ -31,8 +31,12 @@ never modified; every result is a new file.
    python3 -m venv .venv
    source .venv/bin/activate
    pip install --upgrade pip
-   pip install -e '.[dev]'
+   pip install -c requirements.lock -e '.[dev]'
    ```
+
+   `requirements.lock` pins every Python package to the exact version Quince is tested with,
+   so a new release upstream can never break a working setup. To upgrade on purpose:
+   `pip install -U <package>`, run all tests, then `python scripts/lock_deps.py`.
 
 3. Check the dependencies:
 
@@ -50,6 +54,8 @@ python scripts/check_formats.py                # probe real format support on th
 QUINCE_NESTED_X=1 pytest tests/integration/test_x11_drag.py   # drag tests in Xephyr (auto with Xvfb)
 quince service -v                              # run the background service (drag + tap = wheel)
 quince service --stop                          # stop it
+quince service -v --demo-ops                   # with two demo jobs on the Tools wheel
+python scripts/lock_deps.py [--check]          # update (or check) requirements.lock
 quince wheel-demo --n 7                        # preview the wheel (Shift/Ctrl/Alt tap = switch, Q = quit)
 quince list-ops FILE...                        # what each wheel offers for these files/folders
 quince config                                  # print the effective settings (~/.config/quince/config.toml)

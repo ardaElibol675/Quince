@@ -90,13 +90,22 @@ def _stub_message(op, selection) -> str:
     return f"{op.title} · {target}\nNot implemented yet"
 
 
-def run_service() -> int:
+def job_title(op) -> str:
+    """Card title: "Convert to JPG" for conversions, the operation's title otherwise."""
+    from quince.core.operations import Kind
+
+    return f"Convert to {op.label}" if op.kind is Kind.CONVERT else op.title
+
+
+def run_service(*, demo_ops: bool = False) -> int:
     from PySide6.QtWidgets import QApplication
 
     from quince.core import config
+    from quince.core.jobs import JobQueue
     from quince.core.registry import discover
     from quince.input import drag
     from quince.input.x11 import X11InputWatcher, X11Unavailable
+    from quince.ui.feedback.jobs import JobBridge, JobsPanel
     from quince.ui.feedback.toast import Toast
     from quince.ui.wheel.controller import DragWheelController
     from quince.ui.wheel.window import WheelWindow
@@ -114,13 +123,29 @@ def run_service() -> int:
         return 1
 
     cfg = config.load()
+    registry = discover()
+    if demo_ops:
+        from quince.operations.demo import OPERATIONS
+
+        for op in OPERATIONS:
+            registry.register(op)
     wheel = WheelWindow()
     toast = Toast()
-    controller = DragWheelController(wheel, discover())
+    panel = JobsPanel()
+    job_bridge = JobBridge()
+    job_bridge.event.connect(panel.on_event)
+    jobs = JobQueue(on_event=job_bridge.event.emit)
+    panel.cancel_requested.connect(jobs.cancel)
+    controller = DragWheelController(wheel, registry)
 
     def on_chosen(op, selection) -> None:
-        log.info("would run %s on %d item(s) (stub)", op.id, len(selection))
-        toast.show_message(_stub_message(op, selection))
+        if op.run is None:
+            log.info("would run %s on %d item(s) (stub)", op.id, len(selection))
+            toast.show_message(_stub_message(op, selection))
+            return
+        jobs.submit(
+            op.run, selection, title=job_title(op), op_id=op.id, output=config.load().output
+        )
 
     controller.operation_chosen.connect(on_chosen)
     bridge = _Bridge()
@@ -147,6 +172,7 @@ def run_service() -> int:
     finally:
         watcher.stop()
         server.close()
+        jobs.shutdown(wait=True)  # cancels running jobs; their temporary files are removed
         log.info("Quince service stopped")
 
 

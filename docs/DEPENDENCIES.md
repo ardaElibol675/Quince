@@ -37,6 +37,11 @@ the tests need `xserver-xephyr` and `QUINCE_NESTED_X=1`, and they open a small w
 
 ## Python packages (`.venv`, from `pyproject.toml`)
 
+Exact versions are pinned in `requirements.lock` (install with `-c requirements.lock`);
+`tests/unit/test_environment.py` fails when the `.venv` drifts from it. Quince removes a
+foreign `PYTHONPATH` (ROS on the dev machine) from its own `sys.path` and from every child
+process at startup; `QUINCE_KEEP_PYTHONPATH=1` turns this off.
+
 | Package       | Needed for                                  | Version tested |
 |---------------|---------------------------------------------|----------------|
 | `PySide6`     | all UI (Qt 6)                               | 6.10.3         |

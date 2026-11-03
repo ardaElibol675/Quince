@@ -410,7 +410,7 @@ class WheelWindow(QWidget):
         # pointer position is ignored (Enter drops wherever the pointer is).
         index = self.state.highlighted
         if self.drop_settle_ms > 0:
-            QTimer.singleShot(self.drop_settle_ms, lambda: self._finish_drop(index, paths))
+            QTimer.singleShot(self.drop_settle_ms, self, lambda: self._finish_drop(index, paths))
         else:
             self._finish_drop(index, paths)
 
