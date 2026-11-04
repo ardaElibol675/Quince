@@ -29,6 +29,9 @@ BACKEND_MODULES: Mapping[str, str] = MappingProxyType(
         "libreoffice": "quince.backends.office",
         "pandoc": "quince.backends.pandoc",
         "table": "quince.backends.table",
+        "pdf": "quince.backends.pdf",
+        "subtitles": "quince.backends.subtitles",
+        "archive": "quince.backends.archive",
     }
 )
 

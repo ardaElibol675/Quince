@@ -39,9 +39,17 @@ affects one action, and the action explains it.
 | `xdg-open` | `xdg-utils` | Float shelf: double-click opens an item |
 | `org.freedesktop.FileManager1` (D-Bus) | `nautilus` | Show in Files (falls back to opening the folder) |
 
-Expected in later phases (not needed yet): `python3-nautilus` (Phase 11, Nautilus extension);
-`tesseract-ocr` and `tesseract-ocr-tur` (Phase 10, OCR for scanned PDFs); Python package
-`pymupdf4llm` pinned to an exact version (Phase 10, PDF → Markdown).
+**Phase 10 (optional, not installed on the dev machine yet):** `tesseract-ocr` and
+`tesseract-ocr-tur` give PyMuPDF's built-in OCR the English and Turkish models
+(`/usr/share/tesseract-ocr/4.00/tessdata/{eng,tur}.traineddata`); without them a scanned PDF
+page stops the conversion with that install hint. `p7zip-full` enables the 7Z routes and
+`unrar` RAR input. `quince doctor` lists all four (`ocr-eng`, `ocr-tur`, `7z`, `unrar`).
+
+```bash
+sudo apt install tesseract-ocr tesseract-ocr-tur p7zip-full unrar
+```
+
+Expected in later phases (not needed yet): `python3-nautilus` (Phase 11, Nautilus extension).
 
 Development only (optional, both installed on the dev machine): `xvfb` runs the nested-X
 drag tests invisibly (`tests/integration/test_x11_drag.py`), and `python3-gi` with GTK 3
@@ -63,6 +71,8 @@ process at startup; `QUINCE_KEEP_PYTHONPATH=1` turns this off.
 | `pypdf`       | PDF merge, split, organize                  | 6.21.4         |
 | `PyMuPDF`     | PDF rendering (page images) and text        | 1.28.2         |
 | `pysubs2`     | subtitle conversion                         | 1.8.1          |
+| `pymupdf4llm` | PDF → Markdown (exact pin, no `pymupdf-layout` extra; AGPL-3.0 like PyMuPDF) | 0.3.4 |
+| `tabulate`    | pulled in by pymupdf4llm                    | 0.10.0         |
 | `python-xlib` | global drag and trigger detection (XInput2, XFixes, X11) | 0.33   |
 | `tomli`       | reading `config.toml` (stdlib `tomllib` from Python 3.11) | 2.5.0 |
 | `tomli-w`     | writing `config.toml`                       | 1.2.0          |

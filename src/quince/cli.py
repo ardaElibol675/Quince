@@ -106,6 +106,13 @@ def run_self_tests(
 
         passed, detail = pandoc.self_test()
         tests.append(("DOCX → Markdown", passed, detail))
+    if available.missing(("pymupdf", "pymupdf4llm")):
+        tests.append(("PDF → Markdown", None, "skipped: pymupdf4llm is missing"))
+    else:
+        from quince.backends import pdf
+
+        passed, detail = pdf.self_test()
+        tests.append(("PDF → Markdown", passed, detail))
     return tests
 
 

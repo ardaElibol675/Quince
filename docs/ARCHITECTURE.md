@@ -701,3 +701,90 @@ the only guard where namespaces are unavailable.
   names, the profile pool, Markdown tidying, media gathering, doctor's self-test rows.
 - `quince doctor` converts a small DOCX (Turkish, nested list, table) to Markdown and reports
   the result.
+
+## PDF, subtitles and archives (Phase 10)
+
+### Routes
+
+| Module | Routes | Backend |
+|--------|--------|---------|
+| `convert/pdf.py` | PDF → MD, TXT, PNG, JPG, DOCX, ODT, EPUB, PPTX, XLSX | `pdf` (`backends/pdf.py`) |
+| `convert/subtitle.py` | SRT ⇄ VTT, both → TXT | `subtitles` (`backends/subtitles.py`) |
+| `convert/archive.py` | ZIP, TAR, TAR.GZ, 7Z into each other; RAR → all four | `archive` (`backends/archive.py`) |
+
+### PDF → Markdown (`backends/pdf.py`)
+
+```
+open (password / broken / empty → clear error)
+ ├─ scanned pages (< 10 characters, images covering ≥ 50 % of the page)
+ │    tessdata with tur + eng? no → stop: "Page 2 is scanned and needs OCR … sudo apt install …"
+ │    yes → page.get_textpage_ocr(tur+eng, 300 DPI) → paragraphs from text blocks
+ └─ text pages: pymupdf4llm.to_markdown(page, hdr_info=IdentifyHeaders(whole document),
+      write_images → media/) → fix_links (the words under each link rectangle)
+running_lines(doc) → strip_running_lines → join_pages → tidy_markdown → name.md [+ media/]
+```
+
+- **Running headers and footers** are found from positions, not from the Markdown text: a
+  line in the top or bottom 12 % of the page that is a page number, or is set smaller than
+  the body text (the most common size) and repeats on at least half of the pages. Only the
+  first and last three lines of a page's Markdown may be removed, and a Markdown line is
+  removed only when it consists of such pieces ("CH2 Basic Physics … 10"). Body-sized text
+  is never taken: an earlier version lost repeated body paragraphs, and a two-page document
+  whose pages start alike — the tests keep both cases.
+- **tidy_markdown**: drops empty headings, `<br>` in table cells, emphasis inside headings;
+  renumbers heading levels so the top one is `#` (slides came out as `#####`); indents lists
+  by four spaces per level and removes blank lines inside a list (a bullet list followed by a
+  numbered list stays two lists); joins the lines of a paragraph and mends hyphenated words;
+  puts blank lines around headings.
+- **join_pages**: a page that ends without a sentence end, followed by one that starts in
+  lower case, continues the paragraph.
+- pymupdf4llm prints an advertisement on import. It is imported once under a lock with
+  stdout redirected; `redirect_stdout` swaps `sys.stdout` for the whole process, so it is
+  never used around conversions (it swallowed other threads' output during development).
+- Checked on the user's private PDFs (`tests/fixtures/private/`): a course syllabus (tables,
+  lists, bold), 38 lecture slides (images, running footers) and a 32-slide deck with formulas
+  (sub/superscripts are a known limit, see `docs/FORMATS.md`).
+
+### Other PDF targets
+
+- TXT: page text (`sort=True`), OCR for scans, running lines removed, pages joined.
+- PNG/JPG: `office.render_pages(dpi=300)`, a folder `name/name-01.png` for several pages.
+- DOCX/ODT/EPUB: the Markdown (with `media/`) through pandoc (`-f gfm`), offline.
+- PPTX: every page rendered to JPEG and placed full-size on a slide of a generated flat ODP
+  (`office:binary-data`), which LibreOffice saves as PPTX.
+- XLSX: `page.find_tables()` (ruled tables) → a generated flat ODS, one sheet per table
+  ("Page 3", "Page 3 (2)"), plain numbers as numbers → LibreOffice → XLSX.
+
+### Subtitles (`backends/subtitles.py`)
+
+pysubs2 reads the text decoded by `textfiles` (UTF-8 or Windows-1254) and writes SRT or VTT in
+UTF-8; TXT is the cues' plain text, one paragraph each. An empty file is an error.
+
+### Archives (`backends/archive.py`)
+
+Unpack into a private temporary folder, check, pack in the target format:
+- ZIP: every name checked first (`check_name`: no absolute paths, drive letters or `..`),
+  encrypted entries refused, size checked against free space; symlinks restored, modes and
+  times kept. Packing uses `strict_timestamps=False` (ZIP cannot store times before 1980).
+- TAR/TAR.GZ: every member through `tarfile.data_filter` before extraction (absolute paths,
+  `..`, links outside, device files are refused), then `extractall(filter="data")`.
+- 7Z/RAR: the listing (`7z l -slt`, `unrar lta`) is checked first, then extracted with
+  `7z x` / `unrar x`.
+- Afterwards `check_tree` refuses any symlink resolving outside the folder (a second line of
+  defence: with the name checks disabled, it still caught the link cases in a mutation test).
+- An unsafe archive fails as a whole ("The archive contains an unsafe path (../evil.txt);
+  nothing was extracted"); nothing is written next to it.
+
+### Tests
+
+- `tests/integration/test_pdf_golden.py`: `rich.pdf` (two pages, header, footer "Sayfa N / M")
+  and `columns.pdf` against reviewed Markdown; a scanned page without OCR is explained and
+  leaves no file; the OCR test runs once Tesseract is installed; private PDFs are checked for
+  the basics.
+- `tests/integration/test_pdf_subtitle_archive_routes.py`: every route, page images at
+  300 DPI, PPTX slide count, XLSX table values, locked PDFs, Windows-1254 subtitles, seven
+  malicious archives, links and modes kept, encrypted ZIP, broken archives, old timestamps.
+- `tests/unit/test_pdf_logic.py`: the clean-up rules, running-line detection on generated
+  PDFs, link cutting, scan detection, OCR messages, flat ODS/ODP, archive name checks.
+- `quince doctor` converts a generated PDF (heading, bold, list, Turkish) and reports whether
+  OCR is ready.

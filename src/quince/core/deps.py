@@ -7,6 +7,7 @@ enable some operations; when they are missing those operations are hidden.
 from __future__ import annotations
 
 import ctypes.util
+import glob
 import importlib.metadata
 import importlib.util
 import re
@@ -24,14 +25,15 @@ class DepKind(Enum):
     BINARY = "binary"
     PYTHON = "python"
     LIBRARY = "library"
+    FILE = "file"  # a data file, found by a glob pattern
 
 
 @dataclass(frozen=True)
 class Dependency:
     """A single external dependency.
 
-    ``target`` is the executable name (binary), import name (python) or the name
-    passed to ``ctypes.util.find_library`` (library).
+    ``target`` is the executable name (binary), import name (python), the name passed
+    to ``ctypes.util.find_library`` (library) or a glob pattern of a data file (file).
     """
 
     id: str
@@ -62,6 +64,9 @@ DEPENDENCIES: tuple[Dependency, ...] = (
     Dependency("pypdf", DepKind.PYTHON, "pypdf", True, "PDF merge, split, organize", pip="pypdf"),
     Dependency("pymupdf", DepKind.PYTHON, "pymupdf", True, "PDF rendering and text", pip="PyMuPDF"),
     Dependency("pysubs2", DepKind.PYTHON, "pysubs2", True, "subtitle conversion", pip="pysubs2"),
+    Dependency(
+        "pymupdf4llm", DepKind.PYTHON, "pymupdf4llm", True, "PDF to Markdown", pip="pymupdf4llm"
+    ),
     Dependency(
         "python-xlib",
         DepKind.PYTHON,
@@ -112,6 +117,23 @@ DEPENDENCIES: tuple[Dependency, ...] = (
     ),
     Dependency("7z", DepKind.BINARY, "7z", False, "7z archives", apt="p7zip-full", version_args=()),
     Dependency("unrar", DepKind.BINARY, "unrar", False, "RAR input", apt="unrar", version_args=()),
+    # Tesseract language data, used by PyMuPDF's built-in OCR for scanned PDF pages
+    Dependency(
+        "ocr-tur",
+        DepKind.FILE,
+        "/usr/share/tesseract-ocr/*/tessdata/tur.traineddata",
+        False,
+        "OCR of scanned PDFs (Turkish)",
+        apt="tesseract-ocr-tur",
+    ),
+    Dependency(
+        "ocr-eng",
+        DepKind.FILE,
+        "/usr/share/tesseract-ocr/*/tessdata/eng.traineddata",
+        False,
+        "OCR of scanned PDFs (English)",
+        apt="tesseract-ocr",
+    ),
 )
 
 
@@ -165,6 +187,11 @@ def _check_library(dep: Dependency) -> DependencyStatus:
     return DependencyStatus(dep, found is not None, None, found)
 
 
+def _check_file(dep: Dependency) -> DependencyStatus:
+    found = sorted(glob.glob(dep.target))
+    return DependencyStatus(dep, bool(found), None, found[-1] if found else None)
+
+
 def check(
     dep: Dependency,
     which: Callable[[str], str | None] = shutil.which,
@@ -179,6 +206,8 @@ def check(
         return _check_binary(dep, which, versions)
     if dep.kind is DepKind.PYTHON:
         return _check_python(dep, versions)
+    if dep.kind is DepKind.FILE:
+        return _check_file(dep)
     return _check_library(dep)
 
 

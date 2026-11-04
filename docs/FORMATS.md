@@ -5,14 +5,14 @@
 Every format Quince recognizes and the conversions it offers. File types are detected
 by extension and checked against the file content (`src/quince/core/filetype.py`).
 
-47 formats, 276 conversion routes.
+47 formats, 305 conversion routes.
 
 ## Image
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| JPG | JPEG image | `.jpg` `.jpeg` `.jpe` | `image/jpeg` | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, PPTX, PPT, ODP |
-| PNG | PNG image | `.png` | `image/png` | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, PPTX, PPT, ODP |
+| JPG | JPEG image | `.jpg` `.jpeg` `.jpe` | `image/jpeg` | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, PDF, DOCX, DOC, ODT, RTF, PPTX, PPT, ODP |
+| PNG | PNG image | `.png` | `image/png` | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, PDF, DOCX, DOC, ODT, RTF, PPTX, PPT, ODP |
 | WebP | WebP image | `.webp` | `image/webp` | JPG, PNG, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, PNG, HEIC, TIFF, AVIF, BMP, GIF, SVG |
 | HEIC | HEIC image | `.heic` `.heif` | `image/heic` | JPG, PNG, WebP, TIFF, AVIF, BMP, GIF, PDF | JPG, PNG, WebP, TIFF, AVIF, BMP, GIF, SVG |
 | TIFF | TIFF image | `.tiff` `.tif` | `image/tiff` | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, PDF | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, SVG |
@@ -49,26 +49,26 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| PDF | PDF document | `.pdf` | `application/pdf` | — | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, MD, TXT, EPUB, HTML, PPTX, PPT, ODP, XLSX, XLS, ODS, CSV, TSV |
+| PDF | PDF document | `.pdf` | `application/pdf` | JPG, PNG, DOCX, ODT, MD, TXT, EPUB, PPTX, XLSX | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, MD, TXT, EPUB, HTML, PPTX, PPT, ODP, XLSX, XLS, ODS, CSV, TSV |
 
 ## Document
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| DOCX | Word document | `.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | JPG, PNG, PDF, ODT, MD, TXT, EPUB, HTML | DOC, ODT, RTF, MD, TXT, EPUB, HTML |
+| DOCX | Word document | `.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | JPG, PNG, PDF, ODT, MD, TXT, EPUB, HTML | PDF, DOC, ODT, RTF, MD, TXT, EPUB, HTML |
 | DOC | Word 97-2003 document | `.doc` | `application/msword` | JPG, PNG, PDF, DOCX, ODT, MD, TXT, EPUB, HTML | — |
-| ODT | OpenDocument text | `.odt` | `application/vnd.oasis.opendocument.text` | JPG, PNG, PDF, DOCX, MD, TXT, EPUB, HTML | DOCX, DOC, RTF, MD, TXT, EPUB, HTML |
+| ODT | OpenDocument text | `.odt` | `application/vnd.oasis.opendocument.text` | JPG, PNG, PDF, DOCX, MD, TXT, EPUB, HTML | PDF, DOCX, DOC, RTF, MD, TXT, EPUB, HTML |
 | RTF | Rich Text document | `.rtf` | `application/rtf` | JPG, PNG, PDF, DOCX, ODT, MD, TXT, EPUB, HTML | — |
-| MD | Markdown | `.md` `.markdown` | `text/markdown` | PDF, DOCX, ODT, TXT, EPUB, HTML | DOCX, DOC, ODT, RTF, EPUB, HTML |
-| TXT | Plain text | `.txt` `.text` | `text/plain` | PDF, DOCX, ODT | DOCX, DOC, ODT, RTF, MD, EPUB, HTML |
-| EPUB | EPUB e-book | `.epub` | `application/epub+zip` | PDF, DOCX, ODT, MD, TXT, HTML | DOCX, DOC, ODT, RTF, MD, HTML |
+| MD | Markdown | `.md` `.markdown` | `text/markdown` | PDF, DOCX, ODT, TXT, EPUB, HTML | PDF, DOCX, DOC, ODT, RTF, EPUB, HTML |
+| TXT | Plain text | `.txt` `.text` | `text/plain` | PDF, DOCX, ODT | PDF, DOCX, DOC, ODT, RTF, MD, EPUB, HTML, SRT, VTT |
+| EPUB | EPUB e-book | `.epub` | `application/epub+zip` | PDF, DOCX, ODT, MD, TXT, HTML | PDF, DOCX, DOC, ODT, RTF, MD, HTML |
 | HTML | HTML page | `.html` `.htm` `.xhtml` | `text/html` | PDF, DOCX, ODT, MD, TXT, EPUB | DOCX, DOC, ODT, RTF, MD, EPUB |
 
 ## Slides
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| PPTX | PowerPoint presentation | `.pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` | JPG, PNG, PDF, ODP | PPT, ODP |
+| PPTX | PowerPoint presentation | `.pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` | JPG, PNG, PDF, ODP | PDF, PPT, ODP |
 | PPT | PowerPoint 97-2003 presentation | `.ppt` | `application/vnd.ms-powerpoint` | JPG, PNG, PDF, PPTX, ODP | — |
 | ODP | OpenDocument presentation | `.odp` | `application/vnd.oasis.opendocument.presentation` | JPG, PNG, PDF, PPTX | PPTX, PPT |
 
@@ -76,7 +76,7 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| XLSX | Excel workbook | `.xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | PDF, ODS, CSV, TSV | XLS, ODS, CSV, TSV |
+| XLSX | Excel workbook | `.xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | PDF, ODS, CSV, TSV | PDF, XLS, ODS, CSV, TSV |
 | XLS | Excel 97-2003 workbook | `.xls` | `application/vnd.ms-excel` | PDF, XLSX, ODS, CSV, TSV | — |
 | ODS | OpenDocument spreadsheet | `.ods` | `application/vnd.oasis.opendocument.spreadsheet` | PDF, XLSX, CSV, TSV | XLSX, XLS, CSV, TSV |
 | CSV | Comma-separated values | `.csv` | `text/csv` | PDF, XLSX, ODS, TSV | XLSX, XLS, ODS, TSV |
@@ -86,18 +86,18 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| SRT | SubRip subtitles | `.srt` | `application/x-subrip` | — | — |
-| VTT | WebVTT subtitles | `.vtt` | `text/vtt` | — | — |
+| SRT | SubRip subtitles | `.srt` | `application/x-subrip` | TXT, VTT | VTT |
+| VTT | WebVTT subtitles | `.vtt` | `text/vtt` | TXT, SRT | SRT |
 
 ## Archive
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| ZIP | ZIP archive | `.zip` | `application/zip` | — | — |
-| TAR | Tar archive | `.tar` | `application/x-tar` | — | — |
-| TAR.GZ | Gzip-compressed tar archive | `.tar.gz` `.tgz` | `application/x-compressed-tar` | — | — |
-| 7Z | 7-Zip archive | `.7z` | `application/x-7z-compressed` | — | — |
-| RAR | RAR archive | `.rar` | `application/vnd.rar` | — | — |
+| ZIP | ZIP archive | `.zip` | `application/zip` | TAR, TAR.GZ, 7Z | TAR, TAR.GZ, 7Z, RAR |
+| TAR | Tar archive | `.tar` | `application/x-tar` | ZIP, TAR.GZ, 7Z | ZIP, TAR.GZ, 7Z, RAR |
+| TAR.GZ | Gzip-compressed tar archive | `.tar.gz` `.tgz` | `application/x-compressed-tar` | ZIP, TAR, 7Z | ZIP, TAR, 7Z, RAR |
+| 7Z | 7-Zip archive | `.7z` | `application/x-7z-compressed` | ZIP, TAR, TAR.GZ | ZIP, TAR, TAR.GZ, RAR |
+| RAR | RAR archive | `.rar` | `application/vnd.rar` | ZIP, TAR, TAR.GZ, 7Z | — |
 
 ## Routes
 
@@ -111,6 +111,7 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | BMP → JPG | imaging | pillow |
 | GIF → JPG | imaging | pillow |
 | SVG → JPG | imaging | pillow, rsvg-convert |
+| PDF → JPG | pdf | pypdf, pymupdf |
 | DOCX → JPG | libreoffice | soffice, pymupdf |
 | DOC → JPG | libreoffice | soffice, pymupdf |
 | ODT → JPG | libreoffice | soffice, pymupdf |
@@ -126,6 +127,7 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | BMP → PNG | imaging | pillow |
 | GIF → PNG | imaging | pillow |
 | SVG → PNG | imaging | pillow, rsvg-convert |
+| PDF → PNG | pdf | pypdf, pymupdf |
 | DOCX → PNG | libreoffice | soffice, pymupdf |
 | DOC → PNG | libreoffice | soffice, pymupdf |
 | ODT → PNG | libreoffice | soffice, pymupdf |
@@ -320,6 +322,7 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | ODS → PDF | libreoffice | soffice |
 | CSV → PDF | libreoffice | soffice |
 | TSV → PDF | libreoffice | soffice |
+| PDF → DOCX | pdf | pypdf, pymupdf, pymupdf4llm, pandoc |
 | DOC → DOCX | libreoffice | soffice |
 | ODT → DOCX | libreoffice | soffice |
 | RTF → DOCX | libreoffice | soffice |
@@ -327,6 +330,7 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | TXT → DOCX | libreoffice | soffice |
 | EPUB → DOCX | pandoc | pandoc |
 | HTML → DOCX | pandoc | pandoc |
+| PDF → ODT | pdf | pypdf, pymupdf, pymupdf4llm, pandoc |
 | DOCX → ODT | libreoffice | soffice |
 | DOC → ODT | libreoffice | soffice |
 | RTF → ODT | libreoffice | soffice |
@@ -334,12 +338,14 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | TXT → ODT | libreoffice | soffice |
 | EPUB → ODT | pandoc | pandoc |
 | HTML → ODT | pandoc | pandoc |
+| PDF → MD | pdf | pypdf, pymupdf, pymupdf4llm |
 | DOCX → MD | pandoc | pandoc |
 | DOC → MD | pandoc | pandoc, soffice |
 | ODT → MD | pandoc | pandoc |
 | RTF → MD | pandoc | pandoc, soffice |
 | EPUB → MD | pandoc | pandoc |
 | HTML → MD | pandoc | pandoc |
+| PDF → TXT | pdf | pypdf, pymupdf |
 | DOCX → TXT | libreoffice | soffice |
 | DOC → TXT | libreoffice | soffice |
 | ODT → TXT | libreoffice | soffice |
@@ -347,6 +353,9 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | MD → TXT | pandoc | pandoc |
 | EPUB → TXT | pandoc | pandoc |
 | HTML → TXT | pandoc | pandoc |
+| SRT → TXT | subtitles | pysubs2 |
+| VTT → TXT | subtitles | pysubs2 |
+| PDF → EPUB | pdf | pypdf, pymupdf, pymupdf4llm, pandoc |
 | DOCX → EPUB | pandoc | pandoc |
 | DOC → EPUB | pandoc | pandoc, soffice |
 | ODT → EPUB | pandoc | pandoc |
@@ -359,10 +368,12 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | RTF → HTML | pandoc | pandoc, soffice |
 | MD → HTML | pandoc | pandoc |
 | EPUB → HTML | pandoc | pandoc |
+| PDF → PPTX | pdf | pypdf, pymupdf, soffice |
 | PPT → PPTX | libreoffice | soffice |
 | ODP → PPTX | libreoffice | soffice |
 | PPTX → ODP | libreoffice | soffice |
 | PPT → ODP | libreoffice | soffice |
+| PDF → XLSX | pdf | pypdf, pymupdf, soffice |
 | XLS → XLSX | libreoffice | soffice |
 | ODS → XLSX | libreoffice | soffice |
 | CSV → XLSX | libreoffice | soffice |
@@ -379,3 +390,50 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | XLS → TSV | libreoffice | soffice |
 | ODS → TSV | libreoffice | soffice |
 | CSV → TSV | table | — |
+| VTT → SRT | subtitles | pysubs2 |
+| SRT → VTT | subtitles | pysubs2 |
+| TAR → ZIP | archive | — |
+| TAR.GZ → ZIP | archive | — |
+| 7Z → ZIP | archive | 7z |
+| RAR → ZIP | archive | unrar |
+| ZIP → TAR | archive | — |
+| TAR.GZ → TAR | archive | — |
+| 7Z → TAR | archive | 7z |
+| RAR → TAR | archive | unrar |
+| ZIP → TAR.GZ | archive | — |
+| TAR → TAR.GZ | archive | — |
+| 7Z → TAR.GZ | archive | 7z |
+| RAR → TAR.GZ | archive | unrar |
+| ZIP → 7Z | archive | 7z |
+| TAR → 7Z | archive | 7z |
+| TAR.GZ → 7Z | archive | 7z |
+| RAR → 7Z | archive | unrar, 7z |
+
+## Limitations (best effort)
+
+**PDF → Markdown** (pymupdf4llm 0.3.4, cleaned up by Quince):
+- Tables are found only when they have ruled lines; a table without lines comes out as
+  plain lines of text (no data is dropped).
+- Headings come from font sizes; large non-heading text (slide statements) may become a
+  heading, and sub/superscripts (V<sub>Th</sub>) come out as separate bold fragments.
+- Nested numbered lists may come out flat.
+- Running headers and footers are removed only when they are in the top or bottom 12 % of the
+  page, smaller than the body text and on at least half of the pages; page numbers always.
+- Scanned pages need Tesseract (`tesseract-ocr`, `tesseract-ocr-tur`); OCR pages give plain
+  paragraphs (no headings or tables). Without it the conversion stops and says so.
+- Pictures smaller than 5 % of the page are skipped; others go to `media/`.
+
+**PDF → DOCX, ODT, EPUB** are made from that Markdown: flowing, editable text; the page
+layout, fonts and positions are not kept. **PDF → PPTX** puts every page on a slide as a
+picture (300 DPI; not editable). **PDF → XLSX** holds every ruled table, one sheet each.
+
+**DOCX/ODT → Markdown** (pandoc 2.9): DOCX table column alignment is not read; LibreOffice's
+"Quotations" style is not a quote in ODT; images saved by LibreOffice lose their
+description. Lists use pandoc 2.9's indentation (`  - item`, `1.  item`), which is valid GFM.
+
+**Spreadsheets:** CSV/TSV → XLSX/ODS reads numbers as numbers (`007` becomes `7`), like any
+spreadsheet program; CSV ⇄ TSV keeps every value as it is.
+
+**Archives:** symbolic links are kept, set-uid bits and device files are not; ZIP stores
+times before 1980 as 1980-01-01. Password-protected archives are refused.
+

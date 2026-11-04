@@ -22,6 +22,36 @@ def _labels(format_ids: list[str]) -> str:
     return ", ".join(formats.get(f).label for f in format_ids) or "—"
 
 
+LIMITATIONS = """## Limitations (best effort)
+
+**PDF → Markdown** (pymupdf4llm 0.3.4, cleaned up by Quince):
+- Tables are found only when they have ruled lines; a table without lines comes out as
+  plain lines of text (no data is dropped).
+- Headings come from font sizes; large non-heading text (slide statements) may become a
+  heading, and sub/superscripts (V<sub>Th</sub>) come out as separate bold fragments.
+- Nested numbered lists may come out flat.
+- Running headers and footers are removed only when they are in the top or bottom 12 % of the
+  page, smaller than the body text and on at least half of the pages; page numbers always.
+- Scanned pages need Tesseract (`tesseract-ocr`, `tesseract-ocr-tur`); OCR pages give plain
+  paragraphs (no headings or tables). Without it the conversion stops and says so.
+- Pictures smaller than 5 % of the page are skipped; others go to `media/`.
+
+**PDF → DOCX, ODT, EPUB** are made from that Markdown: flowing, editable text; the page
+layout, fonts and positions are not kept. **PDF → PPTX** puts every page on a slide as a
+picture (300 DPI; not editable). **PDF → XLSX** holds every ruled table, one sheet each.
+
+**DOCX/ODT → Markdown** (pandoc 2.9): DOCX table column alignment is not read; LibreOffice's
+"Quotations" style is not a quote in ODT; images saved by LibreOffice lose their
+description. Lists use pandoc 2.9's indentation (`  - item`, `1.  item`), which is valid GFM.
+
+**Spreadsheets:** CSV/TSV → XLSX/ODS reads numbers as numbers (`007` becomes `7`), like any
+spreadsheet program; CSV ⇄ TSV keeps every value as it is.
+
+**Archives:** symbolic links are kept, set-uid bits and device files are not; ZIP stores
+times before 1980 as 1980-01-01. Password-protected archives are refused.
+"""
+
+
 def render(registry: Registry | None = None) -> str:
     registry = registry or discover()
     table = registry.routes
@@ -60,7 +90,7 @@ def render(registry: Registry | None = None) -> str:
     for routes in table.by_target().values():
         for route in routes:
             lines.append(f"| {route} | {route.backend} | {', '.join(route.all_requires) or '—'} |")
-    return "\n".join(lines) + "\n"
+    return "\n".join([*lines, "", LIMITATIONS]) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:

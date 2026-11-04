@@ -99,7 +99,7 @@ def to_markdown(ctx: JobContext | None, src: Path, reader: str, workdir: Path, s
     return result
 
 
-def _writer_options(target: str, stem: str) -> list[str]:
+def writer_options(target: str, stem: str) -> list[str]:
     options = [f"--lua-filter={lua('offline_images.lua')}"]
     if target == "html":
         options += ["--standalone", "--self-contained", "--metadata", f"pagetitle={stem}"]
@@ -181,7 +181,7 @@ def convert_into(ctx: JobContext, src: Path, route: Route, outputs) -> None:
             odt = workdir / f"{stem}.odt"
             result = run_pandoc(
                 ctx, readable, reader, "odt", odt,
-                options=_writer_options("odt", stem), resource_dir=resources_dir,
+                options=writer_options("odt", stem), resource_dir=resources_dir,
             )  # fmt: skip
             (workdir / "pdf").mkdir()
             (pdf,) = office.convert_file(ctx, odt, "odt", "pdf", workdir / "pdf")
@@ -190,7 +190,7 @@ def convert_into(ctx: JobContext, src: Path, route: Route, outputs) -> None:
             out = outputs.file()
             result = run_pandoc(
                 ctx, readable, reader, WRITERS[route.target], out,
-                options=_writer_options(route.target, stem), resource_dir=resources_dir,
+                options=writer_options(route.target, stem), resource_dir=resources_dir,
             )  # fmt: skip
         if any(REMOTE_MARKER in line for line in result.stderr_tail):
             ctx.note(REMOTE_NOTE)

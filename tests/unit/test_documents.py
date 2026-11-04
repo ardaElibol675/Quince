@@ -193,4 +193,7 @@ def test_self_test_skips_without_pandoc():
     from tests.unit.test_cli import _statuses
 
     tests = cli.run_self_tests(_statuses(True, False))
-    assert tests == [("DOCX → Markdown", None, "skipped: pandoc is missing")]
+    assert tests == [
+        ("DOCX → Markdown", None, "skipped: pandoc is missing"),
+        ("PDF → Markdown", None, "skipped: pymupdf4llm is missing"),
+    ]

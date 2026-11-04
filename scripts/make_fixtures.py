@@ -371,6 +371,90 @@ def make_golden(kind: str, out: Path) -> None:
 
 GOLDEN_KINDS = ("docx", "lo.docx", "odt", "rtf", "doc", "html", "epub")
 
+# --- golden PDFs (PDF → Markdown tests) ----------------------------------------
+
+GOLDEN_PDF_HTML = ROOT / "tests" / "fixtures" / "golden" / "rich-pdf.html"
+DEJAVU = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+DEJAVU_BOLD = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+PDF_HEADER = "Çağrı Merkezi Raporu — Gizli"
+
+
+def _font(path: Path) -> Path:
+    if not path.exists():
+        raise Skip(f"{path.name} missing (fonts-dejavu-core)")
+    return path
+
+
+def make_golden_pdf(out: Path) -> None:
+    """rich-pdf.html as a real two-page PDF (LibreOffice), with a running header and a
+    "Sayfa N / M" footer stamped on every page, as office documents have."""
+    import pymupdf
+
+    font = _font(DEJAVU)
+    with tempfile.TemporaryDirectory(prefix="quince-fx-") as tmp_name:
+        tmp = Path(tmp_name)
+        src = tmp / "rich-pdf.html"
+        shutil.copy(GOLDEN_PDF_HTML, src)
+        produced = tmp / "out" / "rich-pdf.pdf"
+        soffice = need("soffice")
+        with tempfile.TemporaryDirectory(prefix="quince-lo-") as profile:
+            run([soffice, f"-env:UserInstallation=file://{profile}", "--headless", "--norestore",
+                 "--infilter=HTML (StarWriter)", "--convert-to", "pdf:writer_pdf_Export",
+                 "--outdir", str(tmp / "out"), str(src)])  # fmt: skip
+        doc = pymupdf.open(produced)
+        for number, page in enumerate(doc, start=1):
+            page.insert_text(
+                (56, 16), PDF_HEADER, fontsize=7, fontname="dejavu", fontfile=str(font)
+            )
+            footer = f"Sayfa {number} / {doc.page_count}"
+            page.insert_text((page.rect.width / 2 - 25, page.rect.height - 24), footer,
+                             fontsize=8, fontname="dejavu", fontfile=str(font))  # fmt: skip
+        doc.save(out)
+
+
+COLUMN_LEFT = (
+    "Sol sütun birinci paragraf: çağrılar sabah saatlerinde yoğunlaşır ve öğleden sonra azalır.",
+    "Sol sütun ikinci paragraf: hafta sonu çağrıları hafta içine göre daha kısadır.",
+)
+COLUMN_RIGHT = (
+    "Sağ sütun birinci paragraf: İzmir ve Muğla'da yaz aylarında artış görülür.",
+    "Sağ sütun ikinci paragraf: İstanbul'da bekleme süresi en uzun olan şehirdir.",
+)
+
+
+def make_columns_pdf(out: Path) -> None:
+    """A page with a full-width heading and two text columns: the reading order must be the
+    left column, then the right one."""
+    import pymupdf
+
+    regular, bold = _font(DEJAVU), _font(DEJAVU_BOLD)
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text(
+        (56, 80), "İki Sütunlu Bülten", fontsize=22, fontname="dvb", fontfile=str(bold)
+    )
+    for x, paragraphs in ((56, COLUMN_LEFT), (316, COLUMN_RIGHT)):
+        text = "\n\n".join(paragraphs)
+        rect = pymupdf.Rect(x, 110, x + 224, 400)
+        page.insert_textbox(rect, text, fontsize=11, fontname="dv", fontfile=str(regular))
+    doc.save(out)
+
+
+def make_scanned_pdf(out: Path, golden_pdf: Path) -> None:
+    """Page 1 of the golden PDF with its text layer, then the same page as a 200 DPI scan
+    (an image only): the second page needs OCR."""
+    import pymupdf
+
+    if not golden_pdf.exists():
+        make_golden_pdf(golden_pdf)
+    src = pymupdf.open(golden_pdf)
+    doc = pymupdf.open()
+    doc.insert_pdf(src, from_page=0, to_page=0)
+    pix = src[0].get_pixmap(dpi=200)
+    page = doc.new_page(width=src[0].rect.width, height=src[0].rect.height)
+    page.insert_image(page.rect, stream=pix.tobytes("png"))
+    doc.save(out)
+
 
 # --- archives ---------------------------------------------------------------
 
@@ -430,6 +514,9 @@ def fixtures() -> dict[str, Callable[[Path], None]]:
     table["sample.7z"] = make_7z
     for kind in GOLDEN_KINDS:
         table[f"golden/rich.{kind}"] = lambda out, kind=kind: make_golden(kind, out)
+    table["golden/rich.pdf"] = make_golden_pdf
+    table["golden/columns.pdf"] = make_columns_pdf
+    table["golden/scanned.pdf"] = lambda out: make_scanned_pdf(out, out.parent / "rich.pdf")
     return table
 
 

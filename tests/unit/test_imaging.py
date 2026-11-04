@@ -216,14 +216,24 @@ def test_progress_messages(tmp_path):
     assert messages[:2] == ["Converting 1 of 2: a.png", "Converting 2 of 2: b.png"]
 
 
-def test_make_run_without_implemented_backends():
-    # The "pdf" backend arrives in Phase 10.
+@pytest.fixture
+def no_pdf_backend(monkeypatch):
+    """Every backend exists now; pretend the "pdf" one does not, as in earlier phases."""
+    from types import MappingProxyType
+
+    import quince.operations.convert as convert_pkg
+
+    modules = {k: v for k, v in convert_pkg.BACKEND_MODULES.items() if k != "pdf"}
+    monkeypatch.setattr(convert_pkg, "BACKEND_MODULES", MappingProxyType(modules))
+
+
+def test_make_run_without_implemented_backends(no_pdf_backend):
     assert make_run("txt", [Route("pdf", "txt", "pdf")]) is None
     run = make_run("txt", [Route("docx", "txt", "libreoffice"), Route("pdf", "txt", "pdf")])
     assert run is not None
 
 
-def test_not_yet_available_routes_are_explained(tmp_path):
+def test_not_yet_available_routes_are_explained(no_pdf_backend, tmp_path):
     pdf = tmp_path / "letter.pdf"
     pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
     run = make_run("txt", [Route("docx", "txt", "libreoffice"), Route("pdf", "txt", "pdf")])

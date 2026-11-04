@@ -176,7 +176,9 @@ def convert_file(
 # --- the backend entry point ------------------------------------------------------------
 
 
-def render_pages(ctx: JobContext, pdf: Path, source: Path, image: str, outputs) -> None:
+def render_pages(
+    ctx: JobContext, pdf: Path, source: Path, image: str, outputs, *, dpi: int = PAGE_DPI
+) -> None:
     """Every page of ``pdf`` as an image: one file, or a folder of numbered files."""
     import pymupdf
 
@@ -194,7 +196,7 @@ def render_pages(ctx: JobContext, pdf: Path, source: Path, image: str, outputs) 
         for n, (page, target) in enumerate(zip(doc, targets, strict=True)):
             ctx.check()
             ctx.progress(0.5 + 0.5 * n / count, f"Page {n + 1} of {count}")
-            pix = page.get_pixmap(dpi=PAGE_DPI, alpha=False)
+            pix = page.get_pixmap(dpi=dpi, alpha=False)
             if image == "jpg":
                 pix.save(str(target), output="jpeg", jpg_quality=JPEG_QUALITY)
             else:
