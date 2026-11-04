@@ -8,6 +8,9 @@ partial file is ever left behind.
 
 Cancellation is cooperative: ``ctx.check()`` raises when the job was cancelled or ran out
 of time, and the process wrapper (``quince.backends.process``) kills external programs.
+
+A job that puts its results in place itself (Move) reports them with ``ctx.add_result()``;
+it is then responsible for leaving a consistent state when it fails.
 """
 
 from __future__ import annotations
@@ -127,16 +130,33 @@ def move_no_replace(src: Path, dst: Path) -> None:
             raise FileExistsError(errno.EEXIST, "destination exists", str(dst))
         os.rename(src, dst)
         return
-    os.link(src, dst)  # fails with FileExistsError instead of replacing
+    # Fails with FileExistsError instead of replacing; a symlink is linked, not its target.
+    os.link(src, dst, follow_symlinks=False)
     os.unlink(src)
+
+
+def _make_writable(func, path, _exc_info) -> None:
+    """``rmtree`` error handler: a read-only folder (copied as such) blocks deleting its
+    contents, so make the parent writable and retry once."""
+    parent = os.path.dirname(path)
+    try:
+        os.chmod(parent, os.stat(parent).st_mode | 0o700)
+        func(path)
+    except OSError:
+        raise _exc_info[1] from None
+
+
+def remove_tree(path: Path) -> None:
+    """Delete a file, symlink or folder tree, also when folders inside are read-only."""
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path, onerror=_make_writable)
+    else:
+        path.unlink(missing_ok=True)
 
 
 def _remove(path: Path) -> None:
     try:
-        if path.is_dir() and not path.is_symlink():
-            shutil.rmtree(path)
-        else:
-            path.unlink(missing_ok=True)
+        remove_tree(path)
     except OSError as exc:
         log.warning("could not remove temporary %s: %s", path, exc)
 
@@ -164,6 +184,7 @@ class JobContext:
         self._deadline = deadline
         self.timed_out = False
         self.outputs: list[_Output] = []
+        self.results: list[Path] = []
         self._last_progress = 0.0
 
     @property
@@ -198,13 +219,16 @@ class JobContext:
         extension: str | None = None,
         suffix: str | None = None,
         directory: bool = False,
+        target_dir: Path | None = None,
     ) -> Path:
         """A temporary path to write one output to; returns it.
 
-        The final name (next to ``source``, or in the configured folder) is reserved now
-        and taken when the job succeeds. With ``directory``, a temporary folder is created.
+        The final name (next to ``source``, in the configured folder, or in ``target_dir``
+        when given) is reserved now and taken when the job succeeds. With ``directory``, a
+        temporary folder is created.
         """
-        target_dir = self._output.directory_for(Path(source))
+        if target_dir is None:
+            target_dir = self._output.directory_for(Path(source))
         if not os.access(target_dir, os.W_OK | os.X_OK):
             raise JobError(f"Cannot write to {target_dir}")
         final = self._queue._reserve(source, target_dir, extension, suffix)
@@ -213,6 +237,10 @@ class JobContext:
             temp.mkdir()
         self.outputs.append(_Output(temp, final, directory))
         return temp
+
+    def add_result(self, path: Path) -> None:
+        """Report an output the job already put at its final place (not a temporary one)."""
+        self.results.append(Path(path))
 
 
 # --- the queue -------------------------------------------------------------------
@@ -350,8 +378,9 @@ class JobQueue:
         self._update(job_id, state=JobState.RUNNING)
         try:
             job.run(ctx)
-            ctx.check()
-            outputs = self._commit(ctx.outputs)
+            if ctx.outputs:
+                ctx.check()  # a late cancel still wins before temporary outputs move in
+            outputs = [*ctx.results, *self._commit(ctx.outputs)]
         except JobCancelled:
             self._discard(ctx.outputs)
             if ctx.timed_out or (job.deadline is not None and time.monotonic() > job.deadline):

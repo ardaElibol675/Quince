@@ -69,11 +69,14 @@ def test_operation_validation():
         _op(id="action.x")
     with pytest.raises(ValueError, match="must start with"):
         _op(id="tool.")
-    with pytest.raises(ValueError, match="either run or editor"):
+    with pytest.raises(ValueError, match="only one of run, start and editor"):
         _op(run=lambda s: None, editor="crop")
+    with pytest.raises(ValueError, match="only one of run, start and editor"):
+        _op(run=lambda s: None, start=lambda s, h: None)
     with pytest.raises(ValueError, match="only convert"):
         _op(routes=(Route("png", "jpg", "imaging"),))
     assert _op(editor="crop").editor == "crop"
+    assert _op(start=lambda s, h: None).start is not None
 
 
 def test_title_defaults_to_label():

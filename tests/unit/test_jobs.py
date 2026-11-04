@@ -318,3 +318,62 @@ def test_check_raises_cancelled(source):
         assert ctx.remaining() is None
     finally:
         q.shutdown()
+
+
+def test_outputs_in_a_given_folder(queue, source, tmp_path):
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+
+    def run(ctx):
+        ctx.new_output(source, target_dir=target).write_text("copy")
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source), title="t"))
+    assert snap.outputs == (target / "photo.png",)
+
+
+def test_results_placed_by_the_job_are_reported(queue, source, tmp_path):
+    placed = tmp_path / "placed.txt"
+
+    def run(ctx):
+        placed.write_text("x")
+        ctx.add_result(placed)
+        ctx.new_output(source, extension="txt").write_text("y")
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source), title="t"))
+    assert snap.state is JobState.SUCCEEDED
+    assert snap.outputs == (placed, tmp_path / "photo.txt")
+
+
+def test_cancel_after_results_were_placed_is_not_reported_as_cancelled(queue, source, tmp_path):
+    placed = tmp_path / "placed.txt"
+
+    def run(ctx):
+        placed.write_text("x")
+        ctx.add_result(placed)
+        ctx._cancel.set()  # too late: the job already changed things
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source), title="t"))
+    assert snap.state is JobState.SUCCEEDED and snap.outputs == (placed,)
+
+
+def test_remove_tree_handles_read_only_folders(tmp_path):
+    root = tmp_path / "tree"
+    (root / "ro").mkdir(parents=True)
+    (root / "ro" / "f.txt").write_text("x")
+    os.chmod(root / "ro", 0o555)
+    jobs.remove_tree(root)
+    assert not root.exists()
+    link = tmp_path / "link"
+    os.symlink(tmp_path, link)
+    jobs.remove_tree(link)
+    assert not os.path.lexists(link) and tmp_path.exists()
+
+
+def test_move_no_replace_fallback_keeps_symlinks(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "_renameat2", None)
+    target = tmp_path / "target.txt"
+    target.write_text("t")
+    link = tmp_path / "link"
+    os.symlink("target.txt", link)
+    move_no_replace(link, tmp_path / "moved")
+    assert os.readlink(tmp_path / "moved") == "target.txt"

@@ -7,6 +7,7 @@ from PySide6.QtGui import QDragEnterEvent
 from PySide6.QtWidgets import QApplication
 
 from quince import app
+from quince.ui import runner
 from quince.ui.feedback.toast import Toast
 from quince.ui.wheel.demo import demo_content
 from quince.ui.wheel.window import WheelWindow
@@ -58,8 +59,8 @@ def test_stub_message():
     op = Operation("convert.image.jpg", Kind.CONVERT, "JPG", "x", Accepts(), title="JPEG image")
     one = Selection((Item(Path("/x/photo.png")),))
     two = Selection((Item(Path("/x/a.png")), Item(Path("/x/b.png"))))
-    assert app._stub_message(op, one) == "JPEG image · photo.png\nNot implemented yet"
-    assert app._stub_message(op, two).startswith("JPEG image · 2 items")
+    assert runner.stub_message(op, one) == "JPEG image · photo.png\nNot implemented yet"
+    assert runner.stub_message(op, two).startswith("JPEG image · 2 items")
 
 
 def test_toast_shows_and_hides(qtbot):

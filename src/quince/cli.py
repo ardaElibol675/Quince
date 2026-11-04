@@ -34,8 +34,13 @@ def _status_row(status: deps.DependencyStatus) -> str:
 
 
 def render_doctor(
-    statuses: Sequence[deps.DependencyStatus], registry: Registry | None = None
+    statuses: Sequence[deps.DependencyStatus],
+    registry: Registry | None = None,
+    *,
+    terminal: object = ...,
 ) -> str:
+    """The ``quince doctor`` report. ``terminal`` is the found ``Terminal`` (or None);
+    left out, the terminal line is omitted."""
     session = os.environ.get("XDG_SESSION_TYPE", "unknown")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "unknown")
     lines = [
@@ -47,6 +52,10 @@ def render_doctor(
     ]
     if session != "x11":
         lines.append("  ! The global wheel needs an X11 session; Wayland is not supported.")
+    if terminal is None:
+        lines.append("  ! No terminal program found; Open in Terminal will not work.")
+    elif terminal is not ...:
+        lines.append(f"  Terminal {terminal.command} ({terminal.name})")
 
     required = [s for s in statuses if s.dependency.required]
     optional = [s for s in statuses if not s.dependency.required]
@@ -78,7 +87,9 @@ def render_doctor(
 
 def cmd_doctor(_args: argparse.Namespace) -> int:
     statuses = deps.check_all()
-    print(render_doctor(statuses, discover()))
+    from quince.backends.desktop import find_terminal
+
+    print(render_doctor(statuses, discover(), terminal=find_terminal()))
     return 1 if any(s.dependency.required and not s.available for s in statuses) else 0
 
 

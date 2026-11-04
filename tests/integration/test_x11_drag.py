@@ -347,13 +347,16 @@ def test_mixed_selection_gets_only_actions(session, mixed):
     _, _, contents = session.open_wheel("Shift_L", "convert")
     assert contents == "empty (Only file actions for folders and mixed files)"
     session.tap("Alt_L")
-    session.wait_log("wheel switched to actions: Copy Path")
+    session.wait_log("wheel switched to actions: Copy, Move, Copy Path,")
     match = re.search(r"wheel convert opened at (\d+),(\d+)", session.log)
     center = (float(match.group(1)), float(match.group(2)))
-    session.glide(*session.slice_point(center, 1, 0))
+    actions = len(re.search(r"wheel switched to actions: (.*)", session.log).group(1).split(", "))
+    session.glide(*session.slice_point(center, actions, 2))  # Copy Path
     session.button(1, False)
     session.wait_log("chosen action.copy_path for")
     session.wait_source("DRAG END copy")
+    # File actions run on the GUI thread once the drag is over and the wheel is gone.
+    session.wait_log("starting action.copy_path for 2 item(s)")
 
 
 @needs_gtk

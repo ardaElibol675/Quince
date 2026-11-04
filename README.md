@@ -12,6 +12,11 @@ never modified; every result is a new file.
 | Tools   | `Ctrl`                      |
 | Actions | `Alt`                       |
 
+The Actions wheel offers **Copy**, **Move** (to a folder you choose; recent destinations
+are in the dialog's sidebar), **Copy Path**, **Show in Files**, **Open With**, **Open in
+Terminal** and **Float**, which puts the files on a small always-on-top shelf to drag them
+out later (dragging out always copies).
+
 > Status: early development.
 
 ## Development setup

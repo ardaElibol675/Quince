@@ -84,19 +84,6 @@ class _Bridge(QObject):
     received = Signal(object)
 
 
-def _stub_message(op, selection) -> str:
-    names = [i.path.name for i in selection.items]
-    target = names[0] if len(names) == 1 else f"{len(names)} items"
-    return f"{op.title} · {target}\nNot implemented yet"
-
-
-def job_title(op) -> str:
-    """Card title: "Convert to JPG" for conversions, the operation's title otherwise."""
-    from quince.core.operations import Kind
-
-    return f"Convert to {op.label}" if op.kind is Kind.CONVERT else op.title
-
-
 def run_service(*, demo_ops: bool = False) -> int:
     from PySide6.QtWidgets import QApplication
 
@@ -107,6 +94,9 @@ def run_service(*, demo_ops: bool = False) -> int:
     from quince.input.x11 import X11InputWatcher, X11Unavailable
     from quince.ui.feedback.jobs import JobBridge, JobsPanel
     from quince.ui.feedback.toast import Toast
+    from quince.ui.host import QtHost
+    from quince.ui.runner import OperationRunner
+    from quince.ui.shelf.window import ShelfWindow
     from quince.ui.wheel.controller import DragWheelController
     from quince.ui.wheel.window import WheelWindow
 
@@ -137,17 +127,16 @@ def run_service(*, demo_ops: bool = False) -> int:
     jobs = JobQueue(on_event=job_bridge.event.emit)
     panel.cancel_requested.connect(jobs.cancel)
     controller = DragWheelController(wheel, registry)
+    shelf: list[ShelfWindow] = []
 
-    def on_chosen(op, selection) -> None:
-        if op.run is None:
-            log.info("would run %s on %d item(s) (stub)", op.id, len(selection))
-            toast.show_message(_stub_message(op, selection))
-            return
-        jobs.submit(
-            op.run, selection, title=job_title(op), op_id=op.id, output=config.load().output
-        )
+    def get_shelf() -> ShelfWindow:
+        if not shelf:
+            shelf.append(ShelfWindow())
+        return shelf[0]
 
-    controller.operation_chosen.connect(on_chosen)
+    host = QtHost(toast, get_shelf)
+    runner = OperationRunner(jobs, host, after_drag=controller.after_drag)
+    controller.operation_chosen.connect(runner.run)
     bridge = _Bridge()
     bridge.received.connect(controller.handle)
     tracker = drag.DragTracker(cfg.triggers.keys, max_tap_ms=cfg.triggers.max_tap_ms)

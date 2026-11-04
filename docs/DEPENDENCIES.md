@@ -26,6 +26,19 @@ Install everything on Ubuntu 22.04:
 sudo apt install python3-venv libxcb-cursor0 ffmpeg libreoffice pandoc librsvg2-bin p7zip-full unrar
 ```
 
+**Desktop integration (file actions, Phase 6)** uses only what an Ubuntu desktop already has;
+no package and no Python module was added. Nothing here is required: a missing piece only
+affects one action, and the action explains it.
+
+| Uses | From (22.04 package) | For |
+|------|----------------------|-----|
+| `applications/*.desktop`, `mimeapps.list`, `defaults.list` | apps themselves, `desktop-file-utils` | Open With: which apps open a type, the default app |
+| `mime/globs2`, `mime/aliases`, `mime/subclasses` | `shared-mime-info` | file types for Open With, apps for parent types |
+| `gsettings` (`org.gnome.desktop.default-applications.terminal`) | `libglib2.0-bin` | Open in Terminal: GNOME's terminal setting |
+| `x-terminal-emulator` (Debian alternatives), else a known terminal | `gnome-terminal`, ... | Open in Terminal; `quince doctor` shows which one is used |
+| `xdg-open` | `xdg-utils` | Float shelf: double-click opens an item |
+| `org.freedesktop.FileManager1` (D-Bus) | `nautilus` | Show in Files (falls back to opening the folder) |
+
 Expected in later phases (not needed yet): `python3-nautilus` (Phase 11, Nautilus extension);
 `tesseract-ocr` and `tesseract-ocr-tur` (Phase 10, OCR for scanned PDFs); Python package
 `pymupdf4llm` pinned to an exact version (Phase 10, PDF → Markdown).

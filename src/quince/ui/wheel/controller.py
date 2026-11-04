@@ -12,9 +12,11 @@ One wheel session per drag:
 3. Raw keys (``DragKey``) drive the wheel; a right or middle click (``DragCancel``) closes it.
 4. A drop on a slice or a keyboard choice emits ``operation_chosen``. The wheel stays mapped
    and invisible until the drag is over, so any late drop lands on it and is ignored.
-5. ``DragEnded``: after a short grace period the wheel is released (hidden).
+5. ``DragEnded``: after a short grace period the wheel is released (hidden). When the choice
+   came from a drop, there is nothing left to swallow, so it is released at once.
 
-Once the wheel closed, further taps in the same drag are ignored.
+Once the wheel closed, further taps in the same drag are ignored. ``after_drag`` runs a
+callback once the drag is over and the wheel is released (file actions that open a dialog).
 """
 
 from __future__ import annotations
@@ -83,6 +85,8 @@ class DragWheelController(QObject):
         self._selection: Selection | None = None
         self._contents: Mapping[str, WheelContent] | None = None
         self._wheel_name: str | None = None
+        self._dropped = False  # the choice came from a drop on the wheel
+        self._pending: list[Callable[[], None]] = []  # waiting for the drag to be over
 
         self._resolved.connect(self._on_resolved)
         wheel.chosen.connect(self._on_chosen)
@@ -115,6 +119,7 @@ class DragWheelController(QObject):
         self._used = self._no_files = False
         self._paths = self._selection = self._contents = None
         self._wheel_name = None
+        self._dropped = False
         log.info("drag started")
 
     def _on_drag_files(self, sig: drag.DragFiles) -> None:
@@ -147,11 +152,36 @@ class DragWheelController(QObject):
         self._dragging = False
         log.info("drag ended")
         session = self._session
-        QTimer.singleShot(self._grace_ms, self, lambda: self._release(session))
+        grace = 0 if self._dropped else self._grace_ms
+        QTimer.singleShot(grace, self, lambda: self._release(session))
 
     def _release(self, session: int | None) -> None:
         if session == self._session and not self._dragging:
             self.wheel.release()
+            self._run_pending()
+
+    # --- after the drag -------------------------------------------------------------
+
+    @property
+    def busy(self) -> bool:
+        """A drag is in progress or the wheel is still mapped for it."""
+        return self._dragging or self.wheel.is_open or self.wheel.holding
+
+    def after_drag(self, callback: Callable[[], None]) -> None:
+        """Run ``callback`` on the GUI thread once the drag is over and the wheel released."""
+        self._pending.append(callback)
+        if not self.busy:
+            QTimer.singleShot(0, self, self._run_pending)
+
+    def _run_pending(self) -> None:
+        if self.busy:
+            return
+        pending, self._pending = self._pending, []
+        for callback in pending:
+            try:
+                callback()
+            except Exception:
+                log.exception("callback after the drag failed")
 
     # --- selection ----------------------------------------------------------------
 
@@ -214,6 +244,11 @@ class DragWheelController(QObject):
             log.warning("chose %s but the dragged files are unknown", item_id)
             return
         log.info("chosen %s for %s", op.id, [str(i.path) for i in selection.items])
+        if paths:
+            self._dropped = True
+            if not self._dragging:  # the drop was handled after the drag had ended
+                session = self._session
+                QTimer.singleShot(0, self, lambda: self._release(session))
         self.operation_chosen.emit(op, selection)
 
 

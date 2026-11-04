@@ -45,3 +45,13 @@ def test_doctor_exit_code_depends_on_required(monkeypatch, capsys, ffmpeg_ok, co
     monkeypatch.setattr(deps, "check_all", lambda: _statuses(ffmpeg_ok, False))
     assert cli.main(["doctor"]) == code
     assert "dependency report" in capsys.readouterr().out
+
+
+def test_render_doctor_terminal():
+    from quince.backends.desktop import Terminal
+
+    found = cli.render_doctor(_statuses(True, True), terminal=Terminal("/usr/bin/xterm", "xterm"))
+    assert "Terminal /usr/bin/xterm (xterm)" in found
+    missing = cli.render_doctor(_statuses(True, True), terminal=None)
+    assert "No terminal program found" in missing
+    assert "Terminal" not in cli.render_doctor(_statuses(True, True))

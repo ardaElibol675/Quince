@@ -409,3 +409,103 @@ Xvfb: without the nudge, Enter dropped on no target; with it, on the wheel.
 `quince service --demo-ops` adds "Slow Demo" (6 s, writes `<name>-demo.txt`) and "Fail
 Demo" (breaks halfway) to the Tools wheel. A nested-X test runs both from the wheel.
 
+
+## File actions and the Float shelf (Phase 6)
+
+### Three ways to run an operation
+
+`Operation` has `run` (a background job), `editor` (Phase 13) or, new in this phase,
+`start(selection, host) -> JobRequest | None`: a step on the GUI thread. The file actions use
+it because they ask the user something (a folder, an application) or touch the desktop
+(clipboard, launching programs).
+
+```
+wheel chosen ──▶ OperationRunner.run(op, selection)            (src/quince/ui/runner.py)
+                   ├─ op.run   → JobQueue.submit (at once)
+                   ├─ op.start → controller.after_drag(...)  → op.start(selection, QtHost)
+                   │                                            └─ JobRequest → JobQueue.submit
+                   └─ neither  → "Not implemented yet" toast
+```
+
+- `after_drag` waits until the drag is over **and** the wheel is released. While Nautilus
+  holds its pointer grab, a menu or dialog could not get the pointer, and the invisible
+  (holding) wheel would sit on top of a dialog. After a keyboard choice this means: when the
+  mouse button is released, plus the 400 ms grace period. A choice made by a drop needs no
+  grace (the drop already happened), so the wheel is released at once.
+- `Host` (a Protocol in `core/operations.py`, implemented by `ui/host.py`): `choose_folder`,
+  `choose` (a menu at the pointer, with an optional sub-list), `set_clipboard_text`, `notify`,
+  `show_in_files`, `float_items`. Actions never import Qt, so they are tested with a fake host.
+- A `JobError` raised by `start` becomes an error toast: "Open in Terminal: No terminal
+  program found".
+
+### The actions (`src/quince/operations/actions/`)
+
+| Action | What it does |
+|--------|--------------|
+| Copy / Move | Qt's folder dialog (recent destinations in the sidebar, "Copy Here" / "Move Here"), then a job |
+| Copy Path | Paths on the clipboard, one per line; toast "Path copied" / "3 paths copied" |
+| Show in Files | `FileManager1.ShowItems`, else the folder is opened (`integrations/files.py`) |
+| Open With | Menu of apps for every selected type (default first) + "Other Applications" |
+| Open in Terminal | The user's terminal in the folder (a file's parent folder); one window per folder, at most 5 |
+| Float | Adds the items to the Float shelf |
+
+All of them accept files, folders and mixed selections (`Accepts.anything()`).
+
+### Copying and moving (`src/quince/backends/files.py`)
+
+- **Copy** reserves the final names through `ctx.new_output(..., target_dir=dest)` and fills
+  temporary entries; the job engine moves them in only when all are complete. Progress is by
+  bytes (plus a small weight per entry). Files are copied in 8 MB chunks with
+  `copy_file_range` (read/write when unsupported), checking for cancel between chunks; mode and
+  times are kept (`copystat`), folders get their mode last so read-only folders can be filled.
+- Checks before anything is written: source still exists, not a folder into itself, the
+  destination is a writable folder, enough free space, no special files (FIFO, socket, device).
+- **Move**, per item: same file system → `renameat2(RENAME_NOREPLACE)` to a free name. Other
+  file system → copy to a temporary name first (cancellable); once all are copied, every item
+  is put in place; then the originals are deleted. If placing fails, everything placed is
+  moved back or removed. If deleting an original fails, the copy stays (nothing is lost) and
+  the error says so. A rename that fails with `EXDEV` (bind mounts) falls back to copying.
+  Items already in the destination are skipped. Moves report their results with
+  `ctx.add_result()`, so the engine does not treat a late cancel as "cancelled".
+- `jobs.remove_tree` makes read-only folders writable to delete a failed copy.
+
+### Desktop data (`src/quince/backends/desktop.py`)
+
+- Applications: `applications/*.desktop` in `$XDG_DATA_HOME` and `$XDG_DATA_DIRS` (first dir
+  wins per desktop file id; subfolders become `kde-foo.desktop`). Listed only when `Type=
+  Application`, not `Hidden`/`NoDisplay`, `OnlyShowIn`/`NotShowIn` match `XDG_CURRENT_DESKTOP`
+  and `TryExec` exists. Names are localized from `LANG`.
+- Associations: `mimeapps.list` and `<desktop>-mimeapps.list` in the config dirs, then the
+  data dirs, then the legacy `defaults.list`. Like GIO, the default is the first installed
+  explicit default, else the first added association; then the type's parents are tried.
+- MIME types: Quince's own detection when it knows the format (content checked), else
+  shared-mime-info globs (`globs2`: literal names, the longest matching extension, other
+  globs, case-sensitive ones honored), else a text check. Aliases resolve to canonical names;
+  `subclasses` gives parent types (`text/markdown` → `text/plain`), so text editors are offered
+  for Markdown. Checked against `gio mime` on the dev machine.
+- `Exec`: quoting per the spec; `%F`/`%U` take all files in one command, `%f`/`%u` start the
+  app once per file; `%i %c %k %%` expanded, deprecated codes dropped. `Terminal=true` apps
+  run inside the user's terminal.
+- Programs start detached (`start_new_session`), with a reaper thread, and an environment
+  without `PYTHONPATH`, `VIRTUAL_ENV`, the venv's `bin` on `PATH` and PySide's variables, so a
+  Python app started from Quince never picks up Quince's interpreter.
+- Terminal: GNOME's `default-applications.terminal exec` (gsettings), then
+  `x-terminal-emulator`, then a list of known terminals. Symlinks are resolved to the real
+  program (on the dev machine `x-terminal-emulator` → `terminator`); a table gives each one's
+  working-directory and run-command arguments, and the folder is also the working directory.
+  `quince doctor` prints the terminal found.
+
+### The Float shelf (`src/quince/ui/shelf/`)
+
+- `model.ShelfItems`: ordered, deduplicated absolute paths; pure and unit tested.
+- `window.ShelfWindow`: frameless, translucent, always on top (`Tool`, managed by the window
+  manager so it can be moved with `startSystemMove` from its title bar), shown without taking
+  focus. It opens at the right edge of the screen under the pointer and keeps its position
+  for the session.
+- Drops are accepted as Copy. Dragging out (selected rows, or "Drag all") is a `QDrag` with
+  `text/uri-list` and **only `CopyAction`** offered, so Nautilus copies even on the same file
+  system. A drag out of the shelf is also a normal XDND drag, so a trigger tap opens the wheel
+  for the shelf's items.
+- Delete/Backspace removes, Clear empties, the close button empties and hides, double-click
+  opens with `xdg-open`, the context menu has Open / Show in Files / Remove. Every 2 s items
+  that no longer exist are dropped.

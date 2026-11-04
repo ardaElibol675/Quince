@@ -3,14 +3,23 @@
 Everything that can appear on a wheel is an ``Operation``. Tools and actions are declared
 by modules in ``quince.operations.tools`` / ``quince.operations.actions`` (one module-level
 ``OPERATION`` each); Convert operations are generated from the route table.
+
+An operation does its work in one of three ways:
+
+- ``run(ctx)``: a background job on a worker thread (``quince.core.jobs``).
+- ``start(selection, host)``: a step on the GUI thread, run once the drag is over. It may ask
+  the user through ``host`` (a folder, an application, ...) and do instant work (clipboard,
+  launching a program). It returns a ``JobRequest`` to queue, or None when it is done.
+- ``editor``: the name of an editor that opens first and produces the job (Phase 13).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
 
 from quince.core.formats import Category
 from quince.core.routes import Route
@@ -82,14 +91,66 @@ class Accepts:
 
 
 @dataclass(frozen=True)
+class Choice:
+    """One entry of a list the user picks from (``Host.choose``).
+
+    ``icon`` is a freedesktop icon name or an absolute path to an image.
+    """
+
+    key: str
+    label: str
+    icon: str = ""
+
+
+@dataclass(frozen=True)
+class JobRequest:
+    """A background job a ``start`` step asks for; ``title`` defaults to the operation's."""
+
+    run: Callable[..., None]
+    title: str = ""
+
+
+class Host(Protocol):
+    """Desktop services for ``Operation.start``, provided by the UI on the GUI thread."""
+
+    def choose_folder(
+        self, title: str, *, accept_label: str, start: Path | None, recent: Sequence[Path]
+    ) -> Path | None:
+        """Ask for a folder; None when the user cancels."""
+        ...
+
+    def choose(
+        self,
+        title: str,
+        choices: Sequence[Choice],
+        *,
+        more: Sequence[Choice] = (),
+        more_label: str = "",
+    ) -> str | None:
+        """Ask for one of ``choices`` (and ``more``, in a sub-list); the chosen key or None."""
+        ...
+
+    def set_clipboard_text(self, text: str) -> None: ...
+
+    def notify(self, text: str) -> None:
+        """A short message for the user (a toast)."""
+        ...
+
+    def show_in_files(self, paths: Sequence[Path]) -> None: ...
+
+    def float_items(self, paths: Sequence[Path]) -> None:
+        """Put ``paths`` on the Float shelf."""
+        ...
+
+
+@dataclass(frozen=True)
 class Operation:
     """A wheel item.
 
     ``label`` is the short slice text; ``title`` is the full name shown in the wheel center
     (defaults to ``label``). ``requires`` lists dependency ids from ``quince.core.deps``.
-    ``run`` is a direct job;
-    ``editor`` names an editor that opens first and produces the job. Both may be unset
-    while the operation is a stub. ``routes`` is set only on Convert operations: the
+    At most one of ``run``, ``start`` and ``editor`` is set (see the module docstring);
+    none is set while the operation is a stub. ``routes`` is set only on Convert operations: the
     routes into the target format, one per source format.
     """
 
@@ -102,6 +163,7 @@ class Operation:
     order: int = DEFAULT_ORDER
     run: Callable[..., Any] | None = None
     editor: str | None = None
+    start: Callable[[Selection, Host], JobRequest | None] | None = None
     routes: tuple[Route, ...] = ()
     title: str = ""
 
@@ -111,8 +173,8 @@ class Operation:
         prefix = f"{self.kind.value}."
         if not self.id.startswith(prefix) or len(self.id) == len(prefix):
             raise ValueError(f"operation id {self.id!r} must start with {prefix!r}")
-        if self.run is not None and self.editor is not None:
-            raise ValueError(f"operation {self.id}: set either run or editor, not both")
+        if sum(x is not None for x in (self.run, self.start, self.editor)) > 1:
+            raise ValueError(f"operation {self.id}: set only one of run, start and editor")
         if self.routes and self.kind is not Kind.CONVERT:
             raise ValueError(f"operation {self.id}: only convert operations have routes")
 
