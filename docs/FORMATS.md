@@ -5,14 +5,14 @@
 Every format Quince recognizes and the conversions it offers. File types are detected
 by extension and checked against the file content (`src/quince/core/filetype.py`).
 
-47 formats, 190 conversion routes.
+47 formats, 276 conversion routes.
 
 ## Image
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| JPG | JPEG image | `.jpg` `.jpeg` `.jpe` | `image/jpeg` | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG |
-| PNG | PNG image | `.png` | `image/png` | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG |
+| JPG | JPEG image | `.jpg` `.jpeg` `.jpe` | `image/jpeg` | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, PPTX, PPT, ODP |
+| PNG | PNG image | `.png` | `image/png` | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, PPTX, PPT, ODP |
 | WebP | WebP image | `.webp` | `image/webp` | JPG, PNG, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, PNG, HEIC, TIFF, AVIF, BMP, GIF, SVG |
 | HEIC | HEIC image | `.heic` `.heif` | `image/heic` | JPG, PNG, WebP, TIFF, AVIF, BMP, GIF, PDF | JPG, PNG, WebP, TIFF, AVIF, BMP, GIF, SVG |
 | TIFF | TIFF image | `.tiff` `.tif` | `image/tiff` | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, PDF | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, SVG |
@@ -49,38 +49,38 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| PDF | PDF document | `.pdf` | `application/pdf` | — | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, ODT |
+| PDF | PDF document | `.pdf` | `application/pdf` | — | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, MD, TXT, EPUB, HTML, PPTX, PPT, ODP, XLSX, XLS, ODS, CSV, TSV |
 
 ## Document
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| DOCX | Word document | `.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | PDF | MD |
-| DOC | Word 97-2003 document | `.doc` | `application/msword` | — | — |
-| ODT | OpenDocument text | `.odt` | `application/vnd.oasis.opendocument.text` | PDF | — |
-| RTF | Rich Text document | `.rtf` | `application/rtf` | — | — |
-| MD | Markdown | `.md` `.markdown` | `text/markdown` | DOCX | — |
-| TXT | Plain text | `.txt` `.text` | `text/plain` | — | — |
-| EPUB | EPUB e-book | `.epub` | `application/epub+zip` | — | — |
-| HTML | HTML page | `.html` `.htm` `.xhtml` | `text/html` | — | — |
+| DOCX | Word document | `.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | JPG, PNG, PDF, ODT, MD, TXT, EPUB, HTML | DOC, ODT, RTF, MD, TXT, EPUB, HTML |
+| DOC | Word 97-2003 document | `.doc` | `application/msword` | JPG, PNG, PDF, DOCX, ODT, MD, TXT, EPUB, HTML | — |
+| ODT | OpenDocument text | `.odt` | `application/vnd.oasis.opendocument.text` | JPG, PNG, PDF, DOCX, MD, TXT, EPUB, HTML | DOCX, DOC, RTF, MD, TXT, EPUB, HTML |
+| RTF | Rich Text document | `.rtf` | `application/rtf` | JPG, PNG, PDF, DOCX, ODT, MD, TXT, EPUB, HTML | — |
+| MD | Markdown | `.md` `.markdown` | `text/markdown` | PDF, DOCX, ODT, TXT, EPUB, HTML | DOCX, DOC, ODT, RTF, EPUB, HTML |
+| TXT | Plain text | `.txt` `.text` | `text/plain` | PDF, DOCX, ODT | DOCX, DOC, ODT, RTF, MD, EPUB, HTML |
+| EPUB | EPUB e-book | `.epub` | `application/epub+zip` | PDF, DOCX, ODT, MD, TXT, HTML | DOCX, DOC, ODT, RTF, MD, HTML |
+| HTML | HTML page | `.html` `.htm` `.xhtml` | `text/html` | PDF, DOCX, ODT, MD, TXT, EPUB | DOCX, DOC, ODT, RTF, MD, EPUB |
 
 ## Slides
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| PPTX | PowerPoint presentation | `.pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` | — | — |
-| PPT | PowerPoint 97-2003 presentation | `.ppt` | `application/vnd.ms-powerpoint` | — | — |
-| ODP | OpenDocument presentation | `.odp` | `application/vnd.oasis.opendocument.presentation` | — | — |
+| PPTX | PowerPoint presentation | `.pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` | JPG, PNG, PDF, ODP | PPT, ODP |
+| PPT | PowerPoint 97-2003 presentation | `.ppt` | `application/vnd.ms-powerpoint` | JPG, PNG, PDF, PPTX, ODP | — |
+| ODP | OpenDocument presentation | `.odp` | `application/vnd.oasis.opendocument.presentation` | JPG, PNG, PDF, PPTX | PPTX, PPT |
 
 ## Spreadsheet
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| XLSX | Excel workbook | `.xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | — | — |
-| XLS | Excel 97-2003 workbook | `.xls` | `application/vnd.ms-excel` | — | — |
-| ODS | OpenDocument spreadsheet | `.ods` | `application/vnd.oasis.opendocument.spreadsheet` | — | — |
-| CSV | Comma-separated values | `.csv` | `text/csv` | — | — |
-| TSV | Tab-separated values | `.tsv` `.tab` | `text/tab-separated-values` | — | — |
+| XLSX | Excel workbook | `.xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | PDF, ODS, CSV, TSV | XLS, ODS, CSV, TSV |
+| XLS | Excel 97-2003 workbook | `.xls` | `application/vnd.ms-excel` | PDF, XLSX, ODS, CSV, TSV | — |
+| ODS | OpenDocument spreadsheet | `.ods` | `application/vnd.oasis.opendocument.spreadsheet` | PDF, XLSX, CSV, TSV | XLSX, XLS, CSV, TSV |
+| CSV | Comma-separated values | `.csv` | `text/csv` | PDF, XLSX, ODS, TSV | XLSX, XLS, ODS, TSV |
+| TSV | Tab-separated values | `.tsv` `.tab` | `text/tab-separated-values` | PDF, XLSX, ODS, CSV | XLSX, XLS, ODS, CSV |
 
 ## Subtitle
 
@@ -111,6 +111,13 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | BMP → JPG | imaging | pillow |
 | GIF → JPG | imaging | pillow |
 | SVG → JPG | imaging | pillow, rsvg-convert |
+| DOCX → JPG | libreoffice | soffice, pymupdf |
+| DOC → JPG | libreoffice | soffice, pymupdf |
+| ODT → JPG | libreoffice | soffice, pymupdf |
+| RTF → JPG | libreoffice | soffice, pymupdf |
+| PPTX → JPG | libreoffice | soffice, pymupdf |
+| PPT → JPG | libreoffice | soffice, pymupdf |
+| ODP → JPG | libreoffice | soffice, pymupdf |
 | JPG → PNG | imaging | pillow |
 | WebP → PNG | imaging | pillow |
 | HEIC → PNG | imaging | pillow, pillow-heif |
@@ -119,6 +126,13 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | BMP → PNG | imaging | pillow |
 | GIF → PNG | imaging | pillow |
 | SVG → PNG | imaging | pillow, rsvg-convert |
+| DOCX → PNG | libreoffice | soffice, pymupdf |
+| DOC → PNG | libreoffice | soffice, pymupdf |
+| ODT → PNG | libreoffice | soffice, pymupdf |
+| RTF → PNG | libreoffice | soffice, pymupdf |
+| PPTX → PNG | libreoffice | soffice, pymupdf |
+| PPT → PNG | libreoffice | soffice, pymupdf |
+| ODP → PNG | libreoffice | soffice, pymupdf |
 | JPG → WebP | imaging | pillow |
 | PNG → WebP | imaging | pillow |
 | HEIC → WebP | imaging | pillow, pillow-heif |
@@ -291,5 +305,77 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | GIF → PDF | imaging | pillow, pymupdf |
 | SVG → PDF | imaging | pillow, rsvg-convert |
 | DOCX → PDF | libreoffice | soffice |
+| DOC → PDF | libreoffice | soffice |
 | ODT → PDF | libreoffice | soffice |
+| RTF → PDF | libreoffice | soffice |
+| MD → PDF | pandoc | pandoc, soffice |
+| TXT → PDF | libreoffice | soffice |
+| EPUB → PDF | pandoc | pandoc, soffice |
+| HTML → PDF | libreoffice | soffice |
+| PPTX → PDF | libreoffice | soffice |
+| PPT → PDF | libreoffice | soffice |
+| ODP → PDF | libreoffice | soffice |
+| XLSX → PDF | libreoffice | soffice |
+| XLS → PDF | libreoffice | soffice |
+| ODS → PDF | libreoffice | soffice |
+| CSV → PDF | libreoffice | soffice |
+| TSV → PDF | libreoffice | soffice |
+| DOC → DOCX | libreoffice | soffice |
+| ODT → DOCX | libreoffice | soffice |
+| RTF → DOCX | libreoffice | soffice |
 | MD → DOCX | pandoc | pandoc |
+| TXT → DOCX | libreoffice | soffice |
+| EPUB → DOCX | pandoc | pandoc |
+| HTML → DOCX | pandoc | pandoc |
+| DOCX → ODT | libreoffice | soffice |
+| DOC → ODT | libreoffice | soffice |
+| RTF → ODT | libreoffice | soffice |
+| MD → ODT | pandoc | pandoc |
+| TXT → ODT | libreoffice | soffice |
+| EPUB → ODT | pandoc | pandoc |
+| HTML → ODT | pandoc | pandoc |
+| DOCX → MD | pandoc | pandoc |
+| DOC → MD | pandoc | pandoc, soffice |
+| ODT → MD | pandoc | pandoc |
+| RTF → MD | pandoc | pandoc, soffice |
+| EPUB → MD | pandoc | pandoc |
+| HTML → MD | pandoc | pandoc |
+| DOCX → TXT | libreoffice | soffice |
+| DOC → TXT | libreoffice | soffice |
+| ODT → TXT | libreoffice | soffice |
+| RTF → TXT | libreoffice | soffice |
+| MD → TXT | pandoc | pandoc |
+| EPUB → TXT | pandoc | pandoc |
+| HTML → TXT | pandoc | pandoc |
+| DOCX → EPUB | pandoc | pandoc |
+| DOC → EPUB | pandoc | pandoc, soffice |
+| ODT → EPUB | pandoc | pandoc |
+| RTF → EPUB | pandoc | pandoc, soffice |
+| MD → EPUB | pandoc | pandoc |
+| HTML → EPUB | pandoc | pandoc |
+| DOCX → HTML | pandoc | pandoc |
+| DOC → HTML | pandoc | pandoc, soffice |
+| ODT → HTML | pandoc | pandoc |
+| RTF → HTML | pandoc | pandoc, soffice |
+| MD → HTML | pandoc | pandoc |
+| EPUB → HTML | pandoc | pandoc |
+| PPT → PPTX | libreoffice | soffice |
+| ODP → PPTX | libreoffice | soffice |
+| PPTX → ODP | libreoffice | soffice |
+| PPT → ODP | libreoffice | soffice |
+| XLS → XLSX | libreoffice | soffice |
+| ODS → XLSX | libreoffice | soffice |
+| CSV → XLSX | libreoffice | soffice |
+| TSV → XLSX | libreoffice | soffice |
+| XLSX → ODS | libreoffice | soffice |
+| XLS → ODS | libreoffice | soffice |
+| CSV → ODS | libreoffice | soffice |
+| TSV → ODS | libreoffice | soffice |
+| XLSX → CSV | libreoffice | soffice |
+| XLS → CSV | libreoffice | soffice |
+| ODS → CSV | libreoffice | soffice |
+| TSV → CSV | table | — |
+| XLSX → TSV | libreoffice | soffice |
+| XLS → TSV | libreoffice | soffice |
+| ODS → TSV | libreoffice | soffice |
+| CSV → TSV | table | — |

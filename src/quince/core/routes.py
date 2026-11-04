@@ -25,6 +25,7 @@ BACKEND_REQUIRES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "pdf": ("pypdf", "pymupdf"),
         "subtitles": ("pysubs2",),
         "archive": (),
+        "table": (),
     }
 )
 

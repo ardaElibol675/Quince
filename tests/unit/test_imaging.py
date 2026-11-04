@@ -217,21 +217,23 @@ def test_progress_messages(tmp_path):
 
 
 def test_make_run_without_implemented_backends():
-    assert make_run("odt", [Route("docx", "odt", "libreoffice")]) is None
-    run = make_run("pdf", [Route("png", "pdf", "imaging"), Route("docx", "pdf", "libreoffice")])
+    # The "pdf" backend arrives in Phase 10.
+    assert make_run("txt", [Route("pdf", "txt", "pdf")]) is None
+    run = make_run("txt", [Route("docx", "txt", "libreoffice"), Route("pdf", "txt", "pdf")])
     assert run is not None
 
 
 def test_not_yet_available_routes_are_explained(tmp_path):
-    from zipfile import ZipFile
-
-    docx = tmp_path / "letter.docx"
-    with ZipFile(docx, "w") as z:
-        z.writestr("[Content_Types].xml", "<Types/>")
-        z.writestr("word/document.xml", "<w:document/>")
-    snap = convert([docx], "pdf", "pdf")
+    pdf = tmp_path / "letter.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    run = make_run("txt", [Route("docx", "txt", "libreoffice"), Route("pdf", "txt", "pdf")])
+    queue = JobQueue(workers=1)
+    try:
+        snap = wait_finished(queue, queue.submit(run, Selection.from_paths([pdf]), title="t"))
+    finally:
+        queue.shutdown()
     assert snap.state is JobState.FAILED
-    assert snap.error == "letter.docx: DOCX → PDF is not available yet"
+    assert snap.error == "letter.pdf: PDF → TXT is not available yet"
 
 
 def test_prepare_rules():

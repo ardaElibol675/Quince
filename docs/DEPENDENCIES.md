@@ -120,6 +120,21 @@ and `unrar`, which were not installed at the time. Run the script again after in
 - Calc: XLSX, XLS, ODS, CSV and TSV input are ok (CSV/TSV need an explicit `--infilter`).
   Output to PDF, XLSX, ODS, CSV and TSV is ok.
 - PDF → DOCX via `writer_pdf_import` produces a file; this is the best-effort path for Phase 10.
+- Phase 9: HTML input needs `--infilter="HTML (StarWriter)"` (otherwise it opens as a
+  Writer/Web document that cannot export DOCX). CSV export with the "all sheets" option names
+  every file `<name>-<Sheet>.csv`, also for a single sheet. CSV import turns `007` into `7`
+  (spreadsheet behaviour), so CSV ⇄ TSV is done in Python instead.
+- pandoc 2.9 cannot read RTF or DOC (LibreOffice converts them to DOCX first) and needs LaTeX
+  for PDF (Markdown/EPUB → PDF go through ODT and LibreOffice). Its GFM writer separates lists
+  with `<!-- end list -->` and writes sized images as HTML; Quince removes both.
+- Known limits of DOCX/ODT → Markdown (pandoc 2.9): table column alignment is not read from
+  DOCX; LibreOffice's "Quotations" paragraph style is not a quote in ODT; images saved by
+  LibreOffice lose their description (a caption paragraph stays as text).
+- **Offline:** LibreOffice and pandoc run inside `unshare -rn` (an unprivileged user and
+  network namespace, util-linux; works on this machine: `kernel.unprivileged_userns_clone=1`),
+  so a document's remote images are never fetched. Without namespaces, a dead proxy is set.
+- Speed: one LibreOffice conversion takes about 1 s (the first one with a fresh Quince profile
+  about 1.5 s); pandoc conversions take 0.1 s.
 
 ### PDF, subtitles, archives
 - PyMuPDF: page render at 300 DPI and text extraction are ok. pypdf: merge is ok.

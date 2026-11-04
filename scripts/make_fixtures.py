@@ -314,6 +314,64 @@ def make_epub(out: Path) -> None:
         run([pandoc, str(src), "--metadata", "title=Quince sample", "-o", str(out)])
 
 
+# --- golden documents (Markdown output tests) --------------------------------
+
+GOLDEN_SOURCE = ROOT / "tests" / "fixtures" / "golden" / "rich.md"
+
+
+def _golden_workdir(tmp: Path) -> Path:
+    """A folder with rich.md and the logo.png it shows."""
+    from PIL import Image, ImageDraw
+
+    shutil.copy(GOLDEN_SOURCE, tmp / "rich.md")
+    logo = Image.new("RGB", (48, 24), (240, 140, 40))
+    ImageDraw.Draw(logo).rectangle((8, 6, 40, 18), fill=(40, 90, 200))
+    logo.save(tmp / "logo.png")
+    return tmp
+
+
+def _golden_docx(tmp: Path) -> Path:
+    """rich.md as a DOCX written by pandoc (proper Word numbering and styles)."""
+    work = _golden_workdir(tmp)
+    run([need("pandoc"), "-f", "markdown", "-t", "docx", f"--resource-path={work}",
+         "-o", str(work / "rich.docx"), str(work / "rich.md")])  # fmt: skip
+    return work / "rich.docx"
+
+
+def make_golden(kind: str, out: Path) -> None:
+    """The golden source in another format, the way users get such files.
+
+    ``docx``: written by pandoc. ``lo.docx``, ``odt``, ``rtf``, ``doc``: the DOCX opened and
+    saved by LibreOffice (``lo.docx`` goes through ODT first). ``html``, ``epub``: by pandoc.
+    """
+    with tempfile.TemporaryDirectory(prefix="quince-fx-") as tmp_name:
+        tmp = Path(tmp_name)
+        if kind in ("html", "epub"):
+            work = _golden_workdir(tmp)
+            extra = ["--standalone", "--self-contained"] if kind == "html" else []
+            run([need("pandoc"), "-f", "markdown", "-t", "html5" if kind == "html" else "epub3",
+                 *extra, f"--resource-path={work}", "--metadata", "title=Proje Raporu",
+                 "-o", str(out),
+                 str(work / "rich.md")])  # fmt: skip
+            return
+        docx = _golden_docx(tmp)
+        if kind == "docx":
+            shutil.move(str(docx), out)
+            return
+        odt = soffice_convert(docx, "odt", tmp / "odt")
+        convert_to = {
+            "odt": None,
+            "lo.docx": "docx:MS Word 2007 XML",
+            "rtf": "rtf:Rich Text Format",
+            "doc": "doc:MS Word 97",
+        }[kind]
+        produced = odt if convert_to is None else soffice_convert(odt, convert_to, tmp / "final")
+        shutil.move(str(produced), out)
+
+
+GOLDEN_KINDS = ("docx", "lo.docx", "odt", "rtf", "doc", "html", "epub")
+
+
 # --- archives ---------------------------------------------------------------
 
 ARCHIVE_MEMBERS = {"hello.txt": b"Hello from Quince.\n", "folder/inner.txt": b"inner\n"}
@@ -370,6 +428,8 @@ def fixtures() -> dict[str, Callable[[Path], None]]:
     table["sample.tar"] = lambda out: make_tar(out, "w")
     table["sample.tar.gz"] = lambda out: make_tar(out, "w:gz")
     table["sample.7z"] = make_7z
+    for kind in GOLDEN_KINDS:
+        table[f"golden/rich.{kind}"] = lambda out, kind=kind: make_golden(kind, out)
     return table
 
 
@@ -378,6 +438,7 @@ def generate(out_dir: Path = DEFAULT_OUT, force: bool = False) -> list[Result]:
     results: list[Result] = []
     for name, make in fixtures().items():
         target = out_dir / name
+        target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists() and target.stat().st_size > 0 and not force:
             results.append(Result(name, True, "exists"))
             continue

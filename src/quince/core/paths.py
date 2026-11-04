@@ -29,3 +29,7 @@ def state_dir() -> Path:
 
 def config_file() -> Path:
     return config_dir() / "config.toml"
+
+
+def cache_dir() -> Path:
+    return _xdg("XDG_CACHE_HOME", ".cache")

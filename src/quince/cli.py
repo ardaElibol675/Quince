@@ -38,9 +38,11 @@ def render_doctor(
     registry: Registry | None = None,
     *,
     terminal: object = ...,
+    self_tests: Sequence[tuple[str, bool | None, str]] = (),
 ) -> str:
     """The ``quince doctor`` report. ``terminal`` is the found ``Terminal`` (or None);
-    left out, the terminal line is omitted."""
+    left out, the terminal line is omitted. ``self_tests`` are (name, passed, detail)
+    rows; passed None means skipped."""
     session = os.environ.get("XDG_SESSION_TYPE", "unknown")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "unknown")
     lines = [
@@ -78,6 +80,12 @@ def render_doctor(
     if apt:
         lines.append(f"Install with: sudo apt install {' '.join(apt)}")
 
+    if self_tests:
+        lines += ["", "Self-tests"]
+        for name, passed, detail in self_tests:
+            mark = "-" if passed is None else ("✓" if passed else "✗")
+            lines.append(f"  {mark} {name:<22} {detail}")
+
     if registry is not None:
         hidden = registry.unavailable(deps.Availability(statuses))
         lines += ["", f"Operations: {len(registry)} registered, {len(hidden)} hidden"]
@@ -85,11 +93,31 @@ def render_doctor(
     return "\n".join(lines)
 
 
+def run_self_tests(
+    statuses: Sequence[deps.DependencyStatus],
+) -> list[tuple[str, bool | None, str]]:
+    """Real conversions of the routes that matter most (CLAUDE.md Decision Log)."""
+    available = deps.Availability(statuses)
+    tests: list[tuple[str, bool | None, str]] = []
+    if available.missing(("pandoc",)):
+        tests.append(("DOCX → Markdown", None, "skipped: pandoc is missing"))
+    else:
+        from quince.backends import pandoc
+
+        passed, detail = pandoc.self_test()
+        tests.append(("DOCX → Markdown", passed, detail))
+    return tests
+
+
 def cmd_doctor(_args: argparse.Namespace) -> int:
     statuses = deps.check_all()
     from quince.backends.desktop import find_terminal
 
-    print(render_doctor(statuses, discover(), terminal=find_terminal()))
+    print(
+        render_doctor(
+            statuses, discover(), terminal=find_terminal(), self_tests=run_self_tests(statuses)
+        )
+    )
     return 1 if any(s.dependency.required and not s.available for s in statuses) else 0
 
 

@@ -3,12 +3,20 @@
 Operations never call ``subprocess`` themselves (CLAUDE.md Section 4); they go through
 ``run``, which reads output line by line, keeps the end of stderr for error messages, kills
 the program on cancellation or timeout, and never inherits a foreign ``PYTHONPATH``.
+
+``run(..., offline=True)`` starts the program without network access (Hard Rule 3), for
+programs that would otherwise fetch remote images or links (pandoc, LibreOffice): inside
+an unprivileged user + network namespace (``unshare -rn``), where only loopback exists.
+Where namespaces are unavailable, proxy variables pointing at a closed local port are the
+fallback.
 """
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -36,6 +44,34 @@ class ProcessResult:
     returncode: int
     stdout_tail: tuple[str, ...]
     stderr_tail: tuple[str, ...]
+
+
+DEAD_PROXY = "http://127.0.0.1:9"  # the discard port: nothing listens there
+
+
+@functools.lru_cache(maxsize=1)
+def offline_prefix() -> tuple[str, ...]:
+    """The command prefix that cuts a program off the network, or () if none works."""
+    unshare = shutil.which("unshare")
+    if unshare:
+        try:
+            probe = subprocess.run(
+                [unshare, "-rn", "true"], capture_output=True, timeout=10, check=False
+            )
+            if probe.returncode == 0:
+                return (unshare, "-rn")
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    log.warning("network namespaces unavailable; offline programs use a dead proxy instead")
+    return ()
+
+
+def offline_env() -> dict[str, str]:
+    """Proxy settings that make HTTP clients fail at once (the fallback, and a second guard)."""
+    return {
+        key: DEAD_PROXY
+        for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy")
+    } | {"no_proxy": "", "NO_PROXY": ""}
 
 
 def clean_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -89,6 +125,7 @@ def run(
     env: Mapping[str, str] | None = None,
     cwd: Path | None = None,
     check: bool = True,
+    offline: bool = False,
 ) -> ProcessResult:
     """Run ``cmd`` to completion, reading its output line by line.
 
@@ -97,6 +134,9 @@ def run(
     """
     args = [str(c) for c in cmd]
     name = Path(args[0]).name
+    if offline:
+        args = [*offline_prefix(), *args]
+        env = {**offline_env(), **(env or {})}
     log.debug("running %s", " ".join(args))
     try:
         proc = subprocess.Popen(

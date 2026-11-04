@@ -632,3 +632,72 @@ ffmpeg -i src -map_metadata 0 <args> -f <muxer> <temporary output>
   transparent GIF, still GIF, a silent video, progress and cancel on a 40 s file, batch
   progress, and decoding every output with the installed GStreamer plugins (Totem's engine).
 - The whole suite now takes about 100 s, half of it ffmpeg.
+
+## Documents, slides and spreadsheets (Phase 9)
+
+### Routes and backends
+
+| Module | Routes | Backend |
+|--------|--------|---------|
+| `convert/document.py` | DOCX/DOC/ODT/RTF/TXT → DOCX, ODT, PDF; office → TXT, PNG, JPG; HTML → PDF | `libreoffice` (`backends/office.py`) |
+| | DOCX/ODT/DOC/RTF → MD, HTML, EPUB; MD, HTML, EPUB → each other, DOCX, ODT, TXT, PDF | `pandoc` (`backends/pandoc.py`) |
+| `convert/slides.py` | PPTX/PPT/ODP → PDF, PNG, JPG; PPTX ⇄ ODP; PPT → both | `libreoffice` |
+| `convert/spreadsheet.py` | XLSX/XLS/ODS/CSV/TSV → XLSX, ODS, CSV, TSV, PDF | `libreoffice` |
+| | CSV ⇄ TSV | `table` (`backends/table.py`, Python) |
+
+A backend may now define `convert_into(ctx, src, route, outputs)` instead of `convert(...)`:
+`outputs.file()` or `outputs.folder()` allocates the result, so a backend can decide after
+converting whether it needs a folder (pages, sheets, Markdown with images).
+
+### LibreOffice (`backends/office.py`)
+
+- `soffice -env:UserInstallation=<Quince profile> --headless --norestore --nolockcheck
+  --nodefault --nologo [--infilter=…] --convert-to <ext>:<filter> --outdir <tmp> input.<ext>`.
+  LibreOffice exits 0 even when it fails, so the result is "files in the out folder"; none
+  means an error with its last "Error" line.
+- Profiles: `~/.cache/quince/libreoffice/profile-0..3`, each guarded by an `flock` on
+  `profile-N.lock`, so two jobs (or two Quince processes) never share one; the user's own
+  profile is never touched, so their LibreOffice can stay open.
+- The input is linked as `input.<ext>` in a private folder (odd names cannot become options);
+  TXT/CSV/TSV are rewritten as UTF-8 first (`backends/textfiles.py`: UTF-8, else Windows-1254),
+  CSV separators are sniffed, and semicolon files are read with Turkish number rules.
+- PNG/JPG: the document becomes a PDF, PyMuPDF renders each page at 150 DPI.
+- CSV/TSV from workbooks: the "all sheets" export option; one sheet → one file, more →
+  `name/name-<Sheet>.csv`.
+
+### pandoc (`backends/pandoc.py`)
+
+- `pandoc -f <reader> -t <writer> … -o <out> <src>`, offline, with `--resource-path` at the
+  source's folder for relative images. DOC/RTF are first converted to DOCX by LibreOffice;
+  PDF goes Markdown/EPUB → ODT (pandoc) → PDF (LibreOffice).
+- Markdown: `-t gfm-raw_html --wrap=none --lua-filter=clean_markdown.lua --extract-media=.`
+  in a private folder, then `tidy_markdown` (drops `<!-- end list -->`) and `gather_media`
+  (moves DOCX `media/`, ODT `Pictures/` and HTML data-URI images into `media/` and fixes the
+  links). With images the result is the folder `name/` (`name.md`, `media/`), else `name.md`.
+- HTML: `--standalone --self-contained` (one file). EPUB: `default_title.lua` uses the
+  document's title or the file name. Other writers: `offline_images.lua` turns remote images
+  into links and the card notes it.
+
+### Offline (`backends/process.py`)
+
+`run(..., offline=True)` prefixes `unshare -rn` (checked once): an unprivileged user and
+network namespace with only a loopback device, so nothing can be fetched, whatever the
+document links to. Proxy variables pointing at the discard port are set as well, and are
+the only guard where namespaces are unavailable.
+
+### Tests
+
+- `tests/integration/test_markdown_golden.py`: `tests/fixtures/golden/rich.md` →
+  (make_fixtures) DOCX by pandoc, DOCX/ODT/RTF/DOC by LibreOffice, HTML, EPUB → Markdown must
+  equal the reviewed files in `tests/fixtures/golden/expected/`, plus explicit checks (no raw
+  HTML, three list levels, one numbered list, table header, relative image, Turkish letters).
+  `QUINCE_UPDATE_GOLDEN=1` rewrites them. Documents in `tests/fixtures/private/` are checked
+  for the basics.
+- `tests/integration/test_document_routes.py`: all 89 routes (format, text content, page
+  images ≥ 300 px), slides → numbered images, sheets → one CSV each, Turkish Excel CSV,
+  values kept CSV → TSV, Windows-1254 text, remote images never fetched, no network inside
+  the namespace, a running LibreOffice, two conversions at once, broken files.
+- `tests/unit/test_documents.py`: decoding, separators, CSV ⇄ TSV quoting, infilters, sheet
+  names, the profile pool, Markdown tidying, media gathering, doctor's self-test rows.
+- `quince doctor` converts a small DOCX (Turkish, nested list, table) to Markdown and reports
+  the result.

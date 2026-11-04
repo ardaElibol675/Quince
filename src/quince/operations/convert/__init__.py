@@ -3,12 +3,17 @@
 ``make_run`` turns the routes into a target format into that Convert operation's job: every
 selected file is converted on its own, into a new file next to it. Files already in the
 target format are skipped. A file that fails does not stop the others (``ctx.item``).
+
+A backend module provides either ``convert(ctx, src, out, route)``, writing one file to
+``out``, or ``convert_into(ctx, src, route, outputs)``, which asks ``outputs`` for a file or
+a folder itself (page images, one CSV per sheet, Markdown with its images).
 """
 
 from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from types import MappingProxyType
 
 from quince.core import formats
@@ -21,13 +26,39 @@ BACKEND_MODULES: Mapping[str, str] = MappingProxyType(
     {
         "imaging": "quince.backends.imaging",
         "ffmpeg": "quince.backends.media",
+        "libreoffice": "quince.backends.office",
+        "pandoc": "quince.backends.pandoc",
+        "table": "quince.backends.table",
     }
 )
 
 
-def backend(name: str) -> Callable[[JobContext, object, object, Route], None] | None:
-    module = BACKEND_MODULES.get(name)
-    return importlib.import_module(module).convert if module else None
+class Outputs:
+    """Allocates the result of one file: a file with the target extension, or a folder."""
+
+    def __init__(self, ctx: JobContext, source: Path, extension: str) -> None:
+        self._ctx, self._source, self._extension = ctx, source, extension
+
+    def file(self) -> Path:
+        return self._ctx.new_output(self._source, extension=self._extension)
+
+    def folder(self) -> Path:
+        return self._ctx.new_output(self._source, extension="", directory=True)
+
+
+def backend(name: str) -> Callable[[JobContext, Path, Route, Outputs], None] | None:
+    """The backend's ``convert_into``-style entry point, or None if it is not implemented."""
+    module_name = BACKEND_MODULES.get(name)
+    if module_name is None:
+        return None
+    module = importlib.import_module(module_name)
+    if hasattr(module, "convert_into"):
+        return module.convert_into
+
+    def into(ctx: JobContext, src: Path, route: Route, outputs: Outputs) -> None:
+        module.convert(ctx, src, outputs.file(), route)
+
+    return into
 
 
 def make_run(target: str, routes: Sequence[Route]) -> Callable[[JobContext], None] | None:
@@ -58,8 +89,7 @@ def make_run(target: str, routes: Sequence[Route]) -> Callable[[JobContext], Non
                 convert = backend(route.backend)
                 if convert is None:
                     raise JobError(f"{route} is not available yet")
-                out = ctx.new_output(item.path, extension=fmt.extension)
-                convert(ctx, item.path, out, route)
+                convert(ctx, item.path, route, Outputs(ctx, item.path, fmt.extension))
         ctx.progress(1.0)
 
     return run
