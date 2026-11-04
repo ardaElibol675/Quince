@@ -574,3 +574,61 @@ go in as PNG (alpha as a soft mask); other sources as JPEG q92. SVG → PDF is
 - `tests/unit/test_imaging.py`: orientation, EXIF/GPS, ICC, CMYK, 16-bit, palettes,
   multi-page TIFF, JPEG passthrough into PDF, size limits, unreadable files, partial batches.
 - The nested-X wheel test drops two PNGs on the WebP slice and checks the `.webp` files.
+
+## Audio and video conversion (Phase 8)
+
+### Routes
+
+- `operations/convert/audio.py`: every ordered pair of `AUDIO` (MP3, M4A, WAV, FLAC, OGG,
+  Opus, AIFF, WMA): 56 routes.
+- `operations/convert/video.py`: every pair of `VIDEO` (MP4, MOV, MKV, WebM, AVI, WMV), each
+  video → GIF and → `SOUND` (MP3, M4A, WAV), animated GIF → MP4/MOV/MKV/WebM: 58 routes.
+- All use backend `ffmpeg`, implemented by `backends/media.py` (registered in the convert
+  package's `BACKEND_MODULES`).
+- `Registry.query` lists Convert targets of the selection's own category first, so a video
+  wheel reads MOV, MKV, WebM, AVI, WMV, GIF, MP3, M4A, WAV.
+
+### Probe, plan, run
+
+```
+ffmpeg.probe(src)  → MediaInfo(streams, duration)      ffprobe -show_streams -show_format -of json
+media.plan(info, source, target) → Plan(args, notes)   pure; unit tested on synthetic streams
+ffmpeg -i src -map_metadata 0 <args> -f <muxer> <temporary output>
+```
+
+- `plan` decides per stream. Video targets: first real video track (cover art is not a video
+  track), every audio track, subtitles (`copy` in MKV, `mov_text` in MP4/MOV, WebVTT in
+  WebM, image-based subtitles only in MKV, none in AVI/WMV), MKV attachments. A stream whose
+  codec is in the container's copy set is copied; the others are encoded with the
+  container's preset (`VIDEO_TARGETS`, `AUDIO_CODECS`). HEVC copied into MP4/MOV gets the
+  `hvc1` tag. Encoded video is rounded to even dimensions.
+- Audio targets: the first audio track, copied when the codec matches (AAC from an MP4 into
+  M4A is instant and lossless), else encoded; channel and sample-rate limits (MP3, WMA)
+  downmix/resample with a note; WAV/AIFF are 24-bit only for sources with a stored depth over
+  16 bits (lossy codecs decode to float and report no depth). Cover art (MJPEG/PNG) is kept
+  in MP3, M4A and FLAC, otherwise a note says it was dropped. Tags are copied.
+- GIF: `fps=min(15, source)`, longer side at most 480, `palettegen`/`paletteuse` in one
+  filter graph. GIF → video: Pillow first checks that the GIF is animated; frames are put on
+  white (`drawbox` fill + `overlay`) and encoded without sound.
+- Notes on the card: "Converted without re-encoding (no quality loss)", "Downmixed to stereo",
+  "Only the first audio track was kept", "Cover art was not kept", "Subtitles were not kept
+  (…)".
+- Errors carry no file name (the batch adds it): "clip.mp4: No sound to convert",
+  "still.gif: Not animated; convert it to an image format instead", "x.mp3: Not a readable
+  audio or video file". Phase 7's image errors were changed the same way.
+
+### Progress in batches
+
+`ctx.item(path, span)` maps a backend's 0..1 to that file's share of the job, so ffmpeg's
+`-progress` output moves one bar from the first file to the last instead of restarting.
+
+### Tests
+
+- `tests/unit/test_media.py`: the planner's rules (copy vs encode, presets, limits, bit
+  depth, cover art, tracks, subtitles, attachments, GIF filters).
+- `tests/integration/test_media_routes.py`: all 114 routes on the fixtures (codec, track
+  count, duration, even size, format detection, originals untouched, no temporary files),
+  plus 24-bit/5.1 audio, cover art and tags, subtitles, odd sizes, a portrait video into GIF,
+  transparent GIF, still GIF, a silent video, progress and cancel on a 40 s file, batch
+  progress, and decoding every output with the installed GStreamer plugins (Totem's engine).
+- The whole suite now takes about 100 s, half of it ffmpeg.

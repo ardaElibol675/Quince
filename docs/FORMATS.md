@@ -5,7 +5,7 @@
 Every format Quince recognizes and the conversions it offers. File types are detected
 by extension and checked against the file content (`src/quince/core/filetype.py`).
 
-47 formats, 81 conversion routes.
+47 formats, 190 conversion routes.
 
 ## Image
 
@@ -18,32 +18,32 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | TIFF | TIFF image | `.tiff` `.tif` | `image/tiff` | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, PDF | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, SVG |
 | AVIF | AVIF image | `.avif` | `image/avif` | JPG, PNG, WebP, HEIC, TIFF, BMP, GIF, PDF | JPG, PNG, WebP, HEIC, TIFF, BMP, GIF, SVG |
 | BMP | BMP image | `.bmp` | `image/bmp` | JPG, PNG, WebP, HEIC, TIFF, AVIF, GIF, PDF | JPG, PNG, WebP, HEIC, TIFF, AVIF, GIF, SVG |
-| GIF | GIF image | `.gif` | `image/gif` | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, PDF | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, MP4 |
+| GIF | GIF image | `.gif` | `image/gif` | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, MP4, MOV, MKV, WebM, PDF | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, MP4, MOV, MKV, WebM, AVI, WMV |
 | SVG | SVG image | `.svg` | `image/svg+xml` | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | — |
 
 ## Audio
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| MP3 | MP3 audio | `.mp3` | `audio/mpeg` | — | WAV, FLAC, MP4 |
-| M4A | MPEG-4 audio | `.m4a` | `audio/mp4` | — | — |
-| WAV | WAV audio | `.wav` | `audio/x-wav` | MP3 | — |
-| FLAC | FLAC audio | `.flac` | `audio/flac` | MP3 | — |
-| OGG | Ogg Vorbis audio | `.ogg` `.oga` | `audio/ogg` | — | — |
-| Opus | Opus audio | `.opus` | `audio/x-opus+ogg` | — | — |
-| AIFF | AIFF audio | `.aiff` `.aif` `.aifc` | `audio/x-aiff` | — | — |
-| WMA | Windows Media audio | `.wma` | `audio/x-ms-wma` | — | — |
+| MP3 | MP3 audio | `.mp3` | `audio/mpeg` | M4A, WAV, FLAC, OGG, Opus, AIFF, WMA | M4A, WAV, FLAC, OGG, Opus, AIFF, WMA, MP4, MOV, MKV, WebM, AVI, WMV |
+| M4A | MPEG-4 audio | `.m4a` | `audio/mp4` | MP3, WAV, FLAC, OGG, Opus, AIFF, WMA | MP3, WAV, FLAC, OGG, Opus, AIFF, WMA, MP4, MOV, MKV, WebM, AVI, WMV |
+| WAV | WAV audio | `.wav` | `audio/x-wav` | MP3, M4A, FLAC, OGG, Opus, AIFF, WMA | MP3, M4A, FLAC, OGG, Opus, AIFF, WMA, MP4, MOV, MKV, WebM, AVI, WMV |
+| FLAC | FLAC audio | `.flac` | `audio/flac` | MP3, M4A, WAV, OGG, Opus, AIFF, WMA | MP3, M4A, WAV, OGG, Opus, AIFF, WMA |
+| OGG | Ogg Vorbis audio | `.ogg` `.oga` | `audio/ogg` | MP3, M4A, WAV, FLAC, Opus, AIFF, WMA | MP3, M4A, WAV, FLAC, Opus, AIFF, WMA |
+| Opus | Opus audio | `.opus` | `audio/x-opus+ogg` | MP3, M4A, WAV, FLAC, OGG, AIFF, WMA | MP3, M4A, WAV, FLAC, OGG, AIFF, WMA |
+| AIFF | AIFF audio | `.aiff` `.aif` `.aifc` | `audio/x-aiff` | MP3, M4A, WAV, FLAC, OGG, Opus, WMA | MP3, M4A, WAV, FLAC, OGG, Opus, WMA |
+| WMA | Windows Media audio | `.wma` | `audio/x-ms-wma` | MP3, M4A, WAV, FLAC, OGG, Opus, AIFF | MP3, M4A, WAV, FLAC, OGG, Opus, AIFF |
 
 ## Video
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| MP4 | MPEG-4 video | `.mp4` `.m4v` | `video/mp4` | GIF, MP3 | MOV |
-| MOV | QuickTime video | `.mov` | `video/quicktime` | MP4 | — |
-| MKV | Matroska video | `.mkv` | `video/x-matroska` | — | — |
-| WebM | WebM video | `.webm` | `video/webm` | — | — |
-| AVI | AVI video | `.avi` | `video/x-msvideo` | — | — |
-| WMV | Windows Media video | `.wmv` | `video/x-ms-wmv` | — | — |
+| MP4 | MPEG-4 video | `.mp4` `.m4v` | `video/mp4` | GIF, MP3, M4A, WAV, MOV, MKV, WebM, AVI, WMV | GIF, MOV, MKV, WebM, AVI, WMV |
+| MOV | QuickTime video | `.mov` | `video/quicktime` | GIF, MP3, M4A, WAV, MP4, MKV, WebM, AVI, WMV | GIF, MP4, MKV, WebM, AVI, WMV |
+| MKV | Matroska video | `.mkv` | `video/x-matroska` | GIF, MP3, M4A, WAV, MP4, MOV, WebM, AVI, WMV | GIF, MP4, MOV, WebM, AVI, WMV |
+| WebM | WebM video | `.webm` | `video/webm` | GIF, MP3, M4A, WAV, MP4, MOV, MKV, AVI, WMV | GIF, MP4, MOV, MKV, AVI, WMV |
+| AVI | AVI video | `.avi` | `video/x-msvideo` | GIF, MP3, M4A, WAV, MP4, MOV, MKV, WebM, WMV | MP4, MOV, MKV, WebM, WMV |
+| WMV | Windows Media video | `.wmv` | `video/x-ms-wmv` | GIF, MP3, M4A, WAV, MP4, MOV, MKV, WebM, AVI | MP4, MOV, MKV, WebM, AVI |
 
 ## PDF
 
@@ -168,10 +168,119 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | BMP → GIF | imaging | pillow |
 | SVG → GIF | imaging | pillow, rsvg-convert |
 | MP4 → GIF | ffmpeg | ffmpeg, ffprobe |
+| MOV → GIF | ffmpeg | ffmpeg, ffprobe |
+| MKV → GIF | ffmpeg | ffmpeg, ffprobe |
+| WebM → GIF | ffmpeg | ffmpeg, ffprobe |
+| AVI → GIF | ffmpeg | ffmpeg, ffprobe |
+| WMV → GIF | ffmpeg | ffmpeg, ffprobe |
+| M4A → MP3 | ffmpeg | ffmpeg, ffprobe |
 | WAV → MP3 | ffmpeg | ffmpeg, ffprobe |
 | FLAC → MP3 | ffmpeg | ffmpeg, ffprobe |
+| OGG → MP3 | ffmpeg | ffmpeg, ffprobe |
+| Opus → MP3 | ffmpeg | ffmpeg, ffprobe |
+| AIFF → MP3 | ffmpeg | ffmpeg, ffprobe |
+| WMA → MP3 | ffmpeg | ffmpeg, ffprobe |
 | MP4 → MP3 | ffmpeg | ffmpeg, ffprobe |
+| MOV → MP3 | ffmpeg | ffmpeg, ffprobe |
+| MKV → MP3 | ffmpeg | ffmpeg, ffprobe |
+| WebM → MP3 | ffmpeg | ffmpeg, ffprobe |
+| AVI → MP3 | ffmpeg | ffmpeg, ffprobe |
+| WMV → MP3 | ffmpeg | ffmpeg, ffprobe |
+| MP3 → M4A | ffmpeg | ffmpeg, ffprobe |
+| WAV → M4A | ffmpeg | ffmpeg, ffprobe |
+| FLAC → M4A | ffmpeg | ffmpeg, ffprobe |
+| OGG → M4A | ffmpeg | ffmpeg, ffprobe |
+| Opus → M4A | ffmpeg | ffmpeg, ffprobe |
+| AIFF → M4A | ffmpeg | ffmpeg, ffprobe |
+| WMA → M4A | ffmpeg | ffmpeg, ffprobe |
+| MP4 → M4A | ffmpeg | ffmpeg, ffprobe |
+| MOV → M4A | ffmpeg | ffmpeg, ffprobe |
+| MKV → M4A | ffmpeg | ffmpeg, ffprobe |
+| WebM → M4A | ffmpeg | ffmpeg, ffprobe |
+| AVI → M4A | ffmpeg | ffmpeg, ffprobe |
+| WMV → M4A | ffmpeg | ffmpeg, ffprobe |
+| MP3 → WAV | ffmpeg | ffmpeg, ffprobe |
+| M4A → WAV | ffmpeg | ffmpeg, ffprobe |
+| FLAC → WAV | ffmpeg | ffmpeg, ffprobe |
+| OGG → WAV | ffmpeg | ffmpeg, ffprobe |
+| Opus → WAV | ffmpeg | ffmpeg, ffprobe |
+| AIFF → WAV | ffmpeg | ffmpeg, ffprobe |
+| WMA → WAV | ffmpeg | ffmpeg, ffprobe |
+| MP4 → WAV | ffmpeg | ffmpeg, ffprobe |
+| MOV → WAV | ffmpeg | ffmpeg, ffprobe |
+| MKV → WAV | ffmpeg | ffmpeg, ffprobe |
+| WebM → WAV | ffmpeg | ffmpeg, ffprobe |
+| AVI → WAV | ffmpeg | ffmpeg, ffprobe |
+| WMV → WAV | ffmpeg | ffmpeg, ffprobe |
+| MP3 → FLAC | ffmpeg | ffmpeg, ffprobe |
+| M4A → FLAC | ffmpeg | ffmpeg, ffprobe |
+| WAV → FLAC | ffmpeg | ffmpeg, ffprobe |
+| OGG → FLAC | ffmpeg | ffmpeg, ffprobe |
+| Opus → FLAC | ffmpeg | ffmpeg, ffprobe |
+| AIFF → FLAC | ffmpeg | ffmpeg, ffprobe |
+| WMA → FLAC | ffmpeg | ffmpeg, ffprobe |
+| MP3 → OGG | ffmpeg | ffmpeg, ffprobe |
+| M4A → OGG | ffmpeg | ffmpeg, ffprobe |
+| WAV → OGG | ffmpeg | ffmpeg, ffprobe |
+| FLAC → OGG | ffmpeg | ffmpeg, ffprobe |
+| Opus → OGG | ffmpeg | ffmpeg, ffprobe |
+| AIFF → OGG | ffmpeg | ffmpeg, ffprobe |
+| WMA → OGG | ffmpeg | ffmpeg, ffprobe |
+| MP3 → Opus | ffmpeg | ffmpeg, ffprobe |
+| M4A → Opus | ffmpeg | ffmpeg, ffprobe |
+| WAV → Opus | ffmpeg | ffmpeg, ffprobe |
+| FLAC → Opus | ffmpeg | ffmpeg, ffprobe |
+| OGG → Opus | ffmpeg | ffmpeg, ffprobe |
+| AIFF → Opus | ffmpeg | ffmpeg, ffprobe |
+| WMA → Opus | ffmpeg | ffmpeg, ffprobe |
+| MP3 → AIFF | ffmpeg | ffmpeg, ffprobe |
+| M4A → AIFF | ffmpeg | ffmpeg, ffprobe |
+| WAV → AIFF | ffmpeg | ffmpeg, ffprobe |
+| FLAC → AIFF | ffmpeg | ffmpeg, ffprobe |
+| OGG → AIFF | ffmpeg | ffmpeg, ffprobe |
+| Opus → AIFF | ffmpeg | ffmpeg, ffprobe |
+| WMA → AIFF | ffmpeg | ffmpeg, ffprobe |
+| MP3 → WMA | ffmpeg | ffmpeg, ffprobe |
+| M4A → WMA | ffmpeg | ffmpeg, ffprobe |
+| WAV → WMA | ffmpeg | ffmpeg, ffprobe |
+| FLAC → WMA | ffmpeg | ffmpeg, ffprobe |
+| OGG → WMA | ffmpeg | ffmpeg, ffprobe |
+| Opus → WMA | ffmpeg | ffmpeg, ffprobe |
+| AIFF → WMA | ffmpeg | ffmpeg, ffprobe |
+| GIF → MP4 | ffmpeg | ffmpeg, ffprobe |
 | MOV → MP4 | ffmpeg | ffmpeg, ffprobe |
+| MKV → MP4 | ffmpeg | ffmpeg, ffprobe |
+| WebM → MP4 | ffmpeg | ffmpeg, ffprobe |
+| AVI → MP4 | ffmpeg | ffmpeg, ffprobe |
+| WMV → MP4 | ffmpeg | ffmpeg, ffprobe |
+| GIF → MOV | ffmpeg | ffmpeg, ffprobe |
+| MP4 → MOV | ffmpeg | ffmpeg, ffprobe |
+| MKV → MOV | ffmpeg | ffmpeg, ffprobe |
+| WebM → MOV | ffmpeg | ffmpeg, ffprobe |
+| AVI → MOV | ffmpeg | ffmpeg, ffprobe |
+| WMV → MOV | ffmpeg | ffmpeg, ffprobe |
+| GIF → MKV | ffmpeg | ffmpeg, ffprobe |
+| MP4 → MKV | ffmpeg | ffmpeg, ffprobe |
+| MOV → MKV | ffmpeg | ffmpeg, ffprobe |
+| WebM → MKV | ffmpeg | ffmpeg, ffprobe |
+| AVI → MKV | ffmpeg | ffmpeg, ffprobe |
+| WMV → MKV | ffmpeg | ffmpeg, ffprobe |
+| GIF → WebM | ffmpeg | ffmpeg, ffprobe |
+| MP4 → WebM | ffmpeg | ffmpeg, ffprobe |
+| MOV → WebM | ffmpeg | ffmpeg, ffprobe |
+| MKV → WebM | ffmpeg | ffmpeg, ffprobe |
+| AVI → WebM | ffmpeg | ffmpeg, ffprobe |
+| WMV → WebM | ffmpeg | ffmpeg, ffprobe |
+| MP4 → AVI | ffmpeg | ffmpeg, ffprobe |
+| MOV → AVI | ffmpeg | ffmpeg, ffprobe |
+| MKV → AVI | ffmpeg | ffmpeg, ffprobe |
+| WebM → AVI | ffmpeg | ffmpeg, ffprobe |
+| WMV → AVI | ffmpeg | ffmpeg, ffprobe |
+| MP4 → WMV | ffmpeg | ffmpeg, ffprobe |
+| MOV → WMV | ffmpeg | ffmpeg, ffprobe |
+| MKV → WMV | ffmpeg | ffmpeg, ffprobe |
+| WebM → WMV | ffmpeg | ffmpeg, ffprobe |
+| AVI → WMV | ffmpeg | ffmpeg, ffprobe |
 | JPG → PDF | imaging | pillow, pymupdf |
 | PNG → PDF | imaging | pillow, pymupdf |
 | WebP → PDF | imaging | pillow, pymupdf |

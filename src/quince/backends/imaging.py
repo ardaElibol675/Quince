@@ -117,11 +117,11 @@ def open_image(path: Path, format_id: str) -> Image.Image:
         im = Image.open(path)
         im.load()
     except Image.DecompressionBombError as exc:
-        raise JobError(f"{path.name} is too large to convert safely", str(exc)) from exc
+        raise JobError("Too large to convert safely", str(exc)) from exc
     except UnidentifiedImageError as exc:
-        raise JobError(f"{path.name} is not a readable {_label(format_id)} image") from exc
+        raise JobError(f"Not a readable {_label(format_id)} image") from exc
     except (OSError, ValueError, SyntaxError) as exc:
-        raise JobError(f"Cannot read {path.name}: {exc}", str(exc)) from exc
+        raise JobError(f"Cannot read the image: {exc}", str(exc)) from exc
     return im
 
 

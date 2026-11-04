@@ -1,15 +1,132 @@
-"""ffmpeg / ffprobe helpers: duration probing and progress from ``-progress pipe:1``.
+"""ffmpeg / ffprobe helpers: stream probing, duration and progress from ``-progress pipe:1``.
 
-Phase 8 adds the conversion presets on top of these.
+The conversion presets live in ``quince.backends.media``.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from quince.backends import process
-from quince.core.jobs import JobContext
+from quince.core.jobs import JobContext, JobError
+
+PROBE_TIMEOUT_S = 60
+_FLOAT_FORMATS = ("flt", "fltp", "dbl", "dblp")
+
+
+@dataclass(frozen=True)
+class Stream:
+    """One stream of a media file, as ffprobe reports it."""
+
+    index: int
+    kind: str  # "video", "audio", "subtitle", "data", "attachment"
+    codec: str
+    channels: int = 0
+    sample_rate: int = 0
+    sample_fmt: str = ""
+    bits: int = 0  # stored bits per sample (audio), e.g. 24 for 24-bit FLAC; 0 for lossy
+    width: int = 0
+    height: int = 0
+    fps: float = 0.0
+    attached_pic: bool = False  # cover art stored as a video stream
+
+    @property
+    def is_float(self) -> bool:
+        return self.sample_fmt in _FLOAT_FORMATS
+
+
+@dataclass(frozen=True)
+class MediaInfo:
+    streams: tuple[Stream, ...]
+    duration: float | None = None
+
+    @property
+    def video(self) -> Stream | None:
+        """The main video stream (cover art does not count)."""
+        return next((s for s in self.streams if s.kind == "video" and not s.attached_pic), None)
+
+    @property
+    def audio(self) -> tuple[Stream, ...]:
+        return tuple(s for s in self.streams if s.kind == "audio")
+
+    @property
+    def subtitles(self) -> tuple[Stream, ...]:
+        return tuple(s for s in self.streams if s.kind == "subtitle")
+
+    @property
+    def cover(self) -> Stream | None:
+        return next((s for s in self.streams if s.kind == "video" and s.attached_pic), None)
+
+
+def _int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _rate(value) -> float:
+    num, _, den = str(value or "").partition("/")
+    try:
+        return float(num) / float(den or 1) if float(den or 1) else 0.0
+    except ValueError:
+        return 0.0
+
+
+def _bits(raw: dict) -> int:
+    """The stored depth. Lossy codecs (MP3, AAC, Vorbis) have none: they decode to float,
+    which says nothing about their quality, so 0 is returned for them."""
+    return _int(raw.get("bits_per_raw_sample")) or _int(raw.get("bits_per_sample"))
+
+
+def parse_probe(text: str) -> MediaInfo:
+    """``ffprobe -show_streams -show_format -of json`` output → ``MediaInfo``."""
+    data = json.loads(text or "{}")
+    streams = []
+    for raw in data.get("streams", []):
+        kind = str(raw.get("codec_type", ""))
+        streams.append(
+            Stream(
+                index=_int(raw.get("index")),
+                kind=kind,
+                codec=str(raw.get("codec_name", "")),
+                channels=_int(raw.get("channels")),
+                sample_rate=_int(raw.get("sample_rate")),
+                sample_fmt=str(raw.get("sample_fmt", "")),
+                bits=_bits(raw) if kind == "audio" else 0,
+                width=_int(raw.get("width")),
+                height=_int(raw.get("height")),
+                fps=_rate(raw.get("avg_frame_rate")) or _rate(raw.get("r_frame_rate")),
+                attached_pic=bool(raw.get("disposition", {}).get("attached_pic")),
+            )
+        )
+    try:
+        duration = float(data.get("format", {}).get("duration"))
+    except (TypeError, ValueError):
+        duration = None
+    return MediaInfo(tuple(streams), duration if duration and duration > 0 else None)
+
+
+def probe(path: Path, ctx: JobContext | None = None) -> MediaInfo:
+    """Streams and duration of a media file; ``JobError`` when ffprobe cannot read it."""
+    lines: list[str] = []
+    try:
+        process.run(
+            ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", path],
+            ctx,
+            timeout_s=PROBE_TIMEOUT_S,
+            on_stdout=lines.append,
+        )
+    except process.BackendError as exc:
+        raise JobError("Not a readable audio or video file", exc.details) from exc
+    try:
+        return parse_probe("\n".join(lines))
+    except ValueError as exc:
+        raise JobError("Cannot read the streams of this file", str(exc)) from exc
+
 
 # Prepended to every ffmpeg call: no prompts, never overwrite, machine-readable progress.
 BASE_ARGS = ("-hide_banner", "-nostdin", "-n", "-progress", "pipe:1", "-nostats")

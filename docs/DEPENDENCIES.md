@@ -102,6 +102,16 @@ and `unrar`, which were not installed at the time. Run the script again after in
 - Notes: no `libfdk_aac` (the built-in `aac` encoder is used). The native `opus`/`vorbis`
   encoders are experimental in ffmpeg 4.4, so the `lib*` encoders are used. There is no
   SVT-AV1, and `libaom-av1` is slow, so AV1 is not a default target.
+- Phase 8 limits found by probing: `wmav2` fails above 48 kHz and above two channels (Quince
+  passes `-ar 48000 -ac 2`); `libmp3lame` silently downmixes 5.1 (Quince says so on the card);
+  Ogg cannot carry cover art in ffmpeg 4.4; M4A and FLAC can.
+- Speed on the dev machine, 10 s 1080p H.264 clip: stream copy (MKV, MOV, M4A) 0.2 s, AVI
+  0.8 s, GIF 1.1 s, WebM (VP9) 7.4 s.
+- **Playing the outputs:** Videos (Totem) plays through GStreamer; 22.04 ships only
+  `gstreamer1.0-plugins-good`, which cannot decode H.264, AAC, MPEG-4, WMV or GIF. This does not
+  affect Quince (VLC plays everything); for Totem install
+  `sudo apt install gstreamer1.0-libav`. `tests/integration/test_media_routes.py` checks every
+  output with the GStreamer decoders that are installed.
 
 ### Documents, slides, spreadsheets (LibreOffice 7.3.7.2, headless, isolated profile)
 - Writer: DOCX, ODT, DOC, RTF, HTML and TXT input are ok. Output to DOCX, ODT, PDF, TXT (UTF-8),

@@ -1,11 +1,12 @@
-"""Audio conversion routes.
+"""Audio conversion routes (backend ``ffmpeg``, see ``quince.backends.media``).
 
-Placeholder set from Phase 2; Phase 8 completes the table.
+Every audio format converts to every other one. Adding a format is one entry in ``AUDIO``.
 """
+
+from itertools import permutations
 
 from quince.core.routes import Route
 
-ROUTES = (
-    Route("wav", "mp3", "ffmpeg", {"bitrate": "192k"}),
-    Route("flac", "mp3", "ffmpeg", {"bitrate": "192k"}),
-)
+AUDIO = ("mp3", "m4a", "wav", "flac", "ogg", "opus", "aiff", "wma")
+
+ROUTES = tuple(Route(s, t, "ffmpeg") for s, t in permutations(AUDIO, 2))

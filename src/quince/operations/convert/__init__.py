@@ -20,6 +20,7 @@ from quince.core.routes import Route
 BACKEND_MODULES: Mapping[str, str] = MappingProxyType(
     {
         "imaging": "quince.backends.imaging",
+        "ffmpeg": "quince.backends.media",
     }
 )
 
@@ -47,8 +48,9 @@ def make_run(target: str, routes: Sequence[Route]) -> Callable[[JobContext], Non
             message = f"Converting {name}"
             if len(todo) > 1:
                 message = f"Converting {index + 1} of {len(todo)}: {name}"
-            ctx.progress(index / len(todo), message)
-            with ctx.item(item.path):
+            span = (index / len(todo), (index + 1) / len(todo))
+            with ctx.item(item.path, span):
+                ctx.progress(0.0, message)
                 route = by_source.get(item.format_id)
                 if route is None:
                     source = item.format.label if item.format else "this file"

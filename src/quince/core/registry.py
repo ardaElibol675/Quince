@@ -124,13 +124,18 @@ class Registry:
         """The operations a wheel of ``kind`` shows for ``selection``, in wheel order.
 
         Convert and Tools offer nothing for mixed selections, folders or unknown file
-        types (Hard Rule 9). With ``available``, operations whose dependencies are
-        missing for this selection are left out (Hard Rule 7). With ``prefs``, disabled
-        operations are left out and the user's order applies.
+        types (Hard Rule 9). Convert targets in the selection's category come first. With
+        ``available``, operations whose dependencies are missing for this selection are left
+        out (Hard Rule 7). With ``prefs``, disabled operations are left out and the user's
+        order applies.
         """
         if kind is not Kind.ACTION and not selection.is_uniform:
             return []
         ops = [op for op in self.operations(kind) if op.accepts.matches(selection)]
+        if kind is Kind.CONVERT:
+            # Targets of the selection's own category first (a video offers videos before GIF
+            # and sound); the sort is stable, so the format order holds within each group.
+            ops.sort(key=lambda op: formats.get(op.routes[0].target).category != selection.category)
         if available is not None:
             ops = [op for op in ops if not available.missing(op.requirements(selection))]
         if prefs is not None:

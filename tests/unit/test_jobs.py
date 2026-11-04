@@ -426,3 +426,25 @@ def test_cancel_inside_an_item_cancels_the_job(queue, source):
     snap = wait_finished(queue, queue.submit(run, _sel(source), title="t"))
     assert snap.state is JobState.CANCELLED
     assert _listing(source.parent) == ["photo.png"]
+
+
+def test_item_progress_is_mapped_to_its_span(source, tmp_path):
+    events = []
+    q = JobQueue(workers=1, on_event=events.append)
+
+    def run(ctx):
+        with ctx.item(source, (0.5, 1.0)):
+            ctx.progress(0.0, "second file")
+            ctx.progress(0.5, "halfway")
+        ctx.progress(0.25, "outside an item")
+
+    try:
+        wait_finished(q, q.submit(run, _sel(source), title="t"))
+    finally:
+        q.shutdown()
+    by_message = {}
+    for e in events:  # the first event with each message (the final one keeps the last text)
+        by_message.setdefault(e.message, e.progress)
+    assert by_message["second file"] == 0.5
+    assert by_message["halfway"] == 0.75
+    assert by_message["outside an item"] == 0.25

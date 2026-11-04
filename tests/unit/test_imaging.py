@@ -217,7 +217,7 @@ def test_progress_messages(tmp_path):
 
 
 def test_make_run_without_implemented_backends():
-    assert make_run("mp3", [Route("wav", "mp3", "ffmpeg")]) is None
+    assert make_run("odt", [Route("docx", "odt", "libreoffice")]) is None
     run = make_run("pdf", [Route("png", "pdf", "imaging"), Route("docx", "pdf", "libreoffice")])
     assert run is not None
 

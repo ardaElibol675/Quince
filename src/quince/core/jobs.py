@@ -199,6 +199,7 @@ class JobContext:
         self.notes: list[str] = []
         self.failures: list[tuple[Path, str]] = []
         self.items_done = 0
+        self._span = (0.0, 1.0)  # progress range of the current item
         self._last_progress = 0.0
 
     @property
@@ -219,7 +220,8 @@ class JobContext:
 
     def progress(self, fraction: float | None = None, message: str | None = None) -> None:
         if fraction is not None:
-            fraction = min(1.0, max(0.0, fraction))
+            start, end = self._span
+            fraction = start + min(1.0, max(0.0, fraction)) * (end - start)
         now = time.monotonic()
         if message is None and fraction != 1.0 and now - self._last_progress < PROGRESS_INTERVAL_S:
             return
@@ -262,10 +264,12 @@ class JobContext:
             self.notes.append(text)
 
     @contextmanager
-    def item(self, source: Path) -> Iterator[None]:
+    def item(self, source: Path, span: tuple[float, float] = (0.0, 1.0)) -> Iterator[None]:
         """One file of a batch: if it fails, only its outputs are dropped and the failure is
-        recorded; cancellation still stops the whole job."""
+        recorded; cancellation still stops the whole job. Inside, progress 0..1 is mapped to
+        ``span`` of the whole job, so a backend reports its own file's progress."""
         start = len(self.outputs)
+        self._span = span
         try:
             yield
         except JobCancelled:
@@ -288,6 +292,8 @@ class JobContext:
             self.failures.append((Path(source), reason))
         else:
             self.items_done += 1
+        finally:
+            self._span = (0.0, 1.0)
 
 
 def _failure_summary(failures: list[tuple[Path, str]]) -> str:
