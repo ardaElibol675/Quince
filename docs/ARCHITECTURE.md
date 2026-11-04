@@ -390,6 +390,9 @@ Xvfb: without the nudge, Enter dropped on no target; with it, on the wheel.
   under the pointer. Running cards show a progress bar (busy when unknown) and Cancel; success
   cards show the output name and "Show in Files" (8 s); error cards the short reason (20 s);
   cancelled cards 3 s. Every finished card has a close button.
+- Cards have a fixed width; on every update a card sets its height from
+  `layout.totalHeightForWidth()`, because `sizeHint()` ignores wrapped text (a card that grew
+  from one running line to a result with notes used to clip them).
 - "Show in Files" calls `org.freedesktop.FileManager1.ShowItems` asynchronously and falls back
   to opening the folder (`src/quince/integrations/files.py`). Phase 6's action reuses it.
 - Operations without `run` still show the Phase 4 stub toast.

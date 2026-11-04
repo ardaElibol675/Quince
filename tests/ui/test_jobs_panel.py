@@ -121,3 +121,32 @@ def test_partial_success_card(qtbot):
     assert card.files_button.isVisibleTo(panel)
     qtbot.wait(100)
     assert 1 in panel.cards  # stays as long as an error card
+
+
+def _fits(card) -> bool:
+    label = card.detail
+    return label.height() >= label.heightForWidth(label.width())
+
+
+def test_card_grows_when_a_running_job_finishes_with_notes(qtbot):
+    """Regression: the card kept its one-line running height and clipped the notes."""
+    panel = _panel(qtbot)
+    panel.on_event(_snap(JobState.QUEUED))
+    panel.on_event(_snap(progress=0.0, message="Converting photo.png"))
+    running = panel.cards[1].height()
+    notes = ("1 file was already JPG", "Transparent areas were filled with white")
+    panel.on_event(_snap(JobState.SUCCEEDED, outputs=(Path("/x/photo (1).jpg"),), notes=notes))
+    card = panel.cards[1]
+    assert _fits(card)
+    assert card.height() > running
+    assert panel.height() >= card.height()
+
+
+def test_long_failure_lines_wrap_inside_the_card(qtbot):
+    panel = _panel(qtbot)
+    failures = tuple(f"bad{i}.png: {'a very long reason ' * 4}" for i in range(4))
+    panel.on_event(_snap(progress=0.5))
+    panel.on_event(_snap(JobState.SUCCEEDED, outputs=(Path("/x/a.jpg"),), failures=failures))
+    assert _fits(panel.cards[1])
+    panel.on_event(_snap(JobState.FAILED, error="x " * 200))
+    assert _fits(panel.cards[1])

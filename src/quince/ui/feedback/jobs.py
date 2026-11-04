@@ -163,6 +163,14 @@ class JobCard(QFrame):
             self.status.setText("\u2013")
             detail = "Cancelled"
         self.detail.setText(detail)
+        self._fit_height()
+
+    def _fit_height(self) -> None:
+        """Grow or shrink to the text. The card has a fixed width, and wrapped labels need a
+        height for that width, which ``sizeHint()`` does not give (it clipped long notes)."""
+        layout = self.layout()
+        layout.activate()
+        self.setFixedHeight(layout.totalHeightForWidth(CARD_WIDTH))
 
 
 class JobsPanel(QWidget):
