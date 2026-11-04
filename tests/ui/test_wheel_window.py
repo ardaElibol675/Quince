@@ -227,7 +227,16 @@ def test_contents_from_registry():
     sel = Selection((Item(Path("/x.png"), format=formats.get("png")),))
     ops = discover().query(sel, Kind.CONVERT)
     content = content_from_operations("convert", ops)
-    assert [i.label for i in content.items] == ["JPG", "WebP"]
+    assert [i.label for i in content.items] == [
+        "JPG",
+        "WebP",
+        "HEIC",
+        "TIFF",
+        "AVIF",
+        "BMP",
+        "GIF",
+        "PDF",
+    ]
     assert content.items[0].title == "JPEG image" and content.title == "Convert"
 
 

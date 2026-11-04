@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from types import ModuleType
 
@@ -39,11 +39,15 @@ def _needs_conversion(target: str):
     return predicate
 
 
-def convert_operations(table: RouteTable) -> list[Operation]:
+MakeRun = Callable[[str, Sequence[Route]], Callable[..., None] | None]
+
+
+def convert_operations(table: RouteTable, make_run: MakeRun | None = None) -> list[Operation]:
     """One Convert operation per target format.
 
     A selection is accepted when every file either has a route to the target or already
-    is in the target format, and at least one file needs converting.
+    is in the target format, and at least one file needs converting. ``make_run`` builds
+    each operation's job from its routes (without it, the operations are stubs).
     """
     ops = []
     for target, routes in table.by_target().items():
@@ -61,6 +65,7 @@ def convert_operations(table: RouteTable) -> list[Operation]:
                 ),
                 order=formats.position(target),
                 routes=tuple(routes),
+                run=make_run(target, tuple(routes)) if make_run else None,
             )
         )
     return ops
@@ -74,9 +79,14 @@ class Registry:
             self.register(op)
 
     @classmethod
-    def from_parts(cls, routes: Iterable[Route], operations: Iterable[Operation] = ()) -> Registry:
+    def from_parts(
+        cls,
+        routes: Iterable[Route],
+        operations: Iterable[Operation] = (),
+        make_run: MakeRun | None = None,
+    ) -> Registry:
         table = RouteTable(routes)
-        return cls([*convert_operations(table), *operations], table)
+        return cls([*convert_operations(table, make_run), *operations], table)
 
     def register(self, op: Operation) -> None:
         if op.id in self._ops:
@@ -166,8 +176,10 @@ def discover(package: str = OPERATIONS_PACKAGE) -> Registry:
     """Build the registry from ``<package>.convert`` (``ROUTES`` per module) and
     ``<package>.tools`` / ``<package>.actions`` (``OPERATION`` per module).
 
-    Modules whose name starts with an underscore are skipped.
+    Modules whose name starts with an underscore are skipped. The convert package's
+    ``make_run`` (if it has one) gives the Convert operations their jobs.
     """
+    make_run = getattr(importlib.import_module(f"{package}.convert"), "make_run", None)
     routes: list[Route] = []
     for module in _modules(f"{package}.convert"):
         if not hasattr(module, "ROUTES"):
@@ -183,4 +195,4 @@ def discover(package: str = OPERATIONS_PACKAGE) -> Registry:
             if op.kind is not kind:
                 raise ValueError(f"{module.__name__}: {op.id} is not a {kind.value} operation")
             ops.append(op)
-    return Registry.from_parts(routes, ops)
+    return Registry.from_parts(routes, ops, make_run)

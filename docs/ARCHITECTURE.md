@@ -509,3 +509,65 @@ All of them accept files, folders and mixed selections (`Accepts.anything()`).
 - Delete/Backspace removes, Clear empties, the close button empties and hides, double-click
   opens with `xdg-open`, the context menu has Open / Show in Files / Remove. Every 2 s items
   that no longer exist are dropped.
+
+## Image conversion (Phase 7)
+
+### From a Convert slice to a file
+
+```
+Registry (discover) ── convert package's make_run(target, routes) ──▶ Operation.run
+run(ctx): for each selected file not already in the target format
+            with ctx.item(file):                      # a failure here skips only this file
+                route = routes[file.format]
+                out = ctx.new_output(file, extension=target)
+                BACKEND_MODULES[route.backend].convert(ctx, file, out, route)
+```
+
+- `src/quince/operations/convert/__init__.py` maps backend names to modules
+  (`imaging` → `quince.backends.imaging`). A Convert operation whose routes all use backends
+  that do not exist yet stays a stub; a single route without a backend fails with
+  "DOCX → PDF is not available yet".
+- Batches: `ctx.item()` drops the failed file's temporary outputs and records the reason. The
+  job succeeds with the other outputs (`JobSnapshot.failures`, amber "!" card that lingers like
+  an error card) and fails only when every file failed. `ctx.note()` adds remarks to the
+  success card; files already in the target format are skipped with a note.
+
+### The route table (`operations/convert/image.py`)
+
+`RASTER = (jpg, png, webp, heic, tiff, avif, bmp, gif)`: every ordered pair (56 routes), each
+→ PDF (8), SVG → each raster and PDF (9). HEIC routes also need `pillow-heif`, PDF routes
+`pymupdf`, SVG routes `rsvg-convert`. A PNG offers 8 targets on the Convert wheel.
+
+### The imaging backend (`backends/imaging.py`)
+
+A `Target` table says what each format can store: alpha, grayscale, CMYK, 16-bit, color
+profile, EXIF, DPI, maximum side, and the save options (JPG q90 optimized, WebP q90, HEIC q85,
+AVIF q80, TIFF deflate). Per file:
+
+1. Open (HEIC opener registered on first use; SVG rendered to PNG by `rsvg-convert` first).
+   Unreadable, truncated or decompression-bomb images fail with a short reason.
+2. Several frames: GIF/WebP targets keep the animation (frame durations, loop; GIF frames
+   with transparency use disposal 2). Otherwise the first frame is used and a note says so;
+   a multi-page TIFF into PDF keeps every page.
+3. `ImageOps.exif_transpose`, then `prepare()` brings the pixels into a mode the target
+   stores: palette/LA/1-bit/YCbCr → RGB(A); 16-bit scaled to 8 bits unless the target keeps
+   16 bits (PNG, TIFF); CMYK → RGB through the embedded profile unless the target keeps CMYK
+   (JPG, TIFF); fully opaque alpha dropped; real transparency kept or composited on white;
+   for targets without a profile (GIF, BMP) the pixels are converted to sRGB.
+4. Size limits (WebP 16383, JPG 65500, GIF 65535) are checked and explained.
+5. Save with the profile, EXIF without the orientation tag (GPS kept), and DPI.
+
+PDF output uses PyMuPDF: one page per image, page size from the DPI (96 when missing or
+absurd). An upright JPEG is embedded byte for byte; lossless sources and anything with alpha
+go in as PNG (alpha as a soft mask); other sources as JPEG q92. SVG → PDF is
+`rsvg-convert -f pdf` and stays vector.
+
+### Tests
+
+- `tests/integration/test_image_routes.py`: every route on the generated fixtures (format
+  detected, decodes, 64×48 kept, transparency kept or white with the note), a three-file
+  batch, the animated GIF, and a decode of each target with gdk-pixbuf (Eye of GNOME's
+  library) under the system Python for the loaders installed.
+- `tests/unit/test_imaging.py`: orientation, EXIF/GPS, ICC, CMYK, 16-bit, palettes,
+  multi-page TIFF, JPEG passthrough into PDF, size limits, unreadable files, partial batches.
+- The nested-X wheel test drops two PNGs on the WebP slice and checks the `.webp` files.

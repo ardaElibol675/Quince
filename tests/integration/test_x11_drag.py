@@ -29,7 +29,19 @@ HERE = Path(__file__).resolve().parent
 SYSTEM_PYTHON = "/usr/bin/python3"
 DRAG_START = (100, 100)
 WHEEL_AT = (400, 300)  # where the pointer is when the trigger is tapped
-PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 24
+
+
+def _tiny_png() -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 3), (200, 80, 20)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+PNG = _tiny_png()  # a real image, so a chosen conversion really runs
 PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
 
 
@@ -252,6 +264,7 @@ def mixed(tmp_path):
     return [_write(tmp_path / "one.png", PNG), _write(tmp_path / "two.pdf", PDF)]
 
 
+PNG_TARGETS = "JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF"
 needs_gtk = pytest.mark.skipif(not _has_system_gtk3(), reason="needs system python3-gi with GTK 3")
 
 
@@ -266,14 +279,15 @@ def test_wheel_shows_registry_contents_switches_and_drop_with_shift_is_copy(sess
     session.begin_drag()
     session.wait_log("dragged: 2 files, image (PNG)")  # read before any wheel is shown
     cx, cy, contents = session.open_wheel("Shift_L", "convert")
-    assert contents == "JPG, WebP"
+    assert contents == PNG_TARGETS
     session.tap("Shift_L", hold=0.6)  # too long: not a tap
     session.tap("Control_L")
     session.wait_log("wheel switched to tools: empty (Nothing available)")
     session.tap("Shift_L")
-    session.wait_log("wheel switched to convert: JPG, WebP")
+    session.wait_log(f"wheel switched to convert: {PNG_TARGETS}")
 
-    session.glide(*session.slice_point((cx, cy), 2, 1))  # the WebP slice
+    targets = len(PNG_TARGETS.split(", "))
+    session.glide(*session.slice_point((cx, cy), targets, 1))  # the WebP slice
     session.key("Shift_L", True)  # Shift held at drop: GTK proposes Move
     time.sleep(0.2)
     session.button(1, False)
@@ -287,6 +301,10 @@ def test_wheel_shows_registry_contents_switches_and_drop_with_shift_is_copy(sess
     assert "DRAG END copy" in session.source
     assert "DELETE REQUESTED" not in session.source
     assert_untouched(images)
+    # The conversion really runs: one WebP per PNG, next to it.
+    session.wait_log("succeeded:")
+    for image in images:
+        assert image.with_suffix(".webp").read_bytes()[8:12] == b"WEBP"
 
 
 @needs_gtk

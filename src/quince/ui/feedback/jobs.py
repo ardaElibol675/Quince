@@ -33,6 +33,8 @@ ERROR_MS = 20000
 CANCELLED_MS = 3000
 ERROR_COLOR = "#d64545"
 SUCCESS_COLOR = "#3a9b5c"
+PARTIAL_COLOR = "#d9822b"
+MAX_FAILURE_LINES = 3
 
 
 class JobBridge(QObject):
@@ -50,6 +52,17 @@ def _names(paths: Sequence[Path], limit: int = 2) -> str:
     if len(names) <= limit:
         return ", ".join(names)
     return ", ".join(names[:limit]) + f" +{len(names) - limit} more"
+
+
+def _remarks(s: JobSnapshot) -> list[str]:
+    lines = list(s.notes)
+    if s.failures:
+        count = len(s.failures)
+        lines.append(f"{count} file{'s' if count != 1 else ''} failed:")
+        lines += s.failures[:MAX_FAILURE_LINES]
+        if len(s.failures) > MAX_FAILURE_LINES:
+            lines.append(f"+{len(s.failures) - MAX_FAILURE_LINES} more (see the log)")
+    return lines
 
 
 class JobCard(QFrame):
@@ -140,8 +153,9 @@ class JobCard(QFrame):
                 self.bar.setValue(round(s.progress * 1000))
             detail = s.message or _names(s.sources)
         elif s.state is JobState.SUCCEEDED:
-            self.status.setText(f"<span style='color:{SUCCESS_COLOR}'>✓</span>")
-            detail = f"→ {_names(s.outputs)}" if s.outputs else "Done"
+            color = PARTIAL_COLOR if s.partial else SUCCESS_COLOR
+            self.status.setText(f"<span style='color:{color}'>{'!' if s.partial else '✓'}</span>")
+            detail = "\n".join([f"→ {_names(s.outputs)}" if s.outputs else "Done", *_remarks(s)])
         elif s.state is JobState.FAILED:
             self.status.setText(f"<span style='color:{ERROR_COLOR}'>✕</span>")
             detail = s.error or "Failed"
@@ -203,7 +217,8 @@ class JobsPanel(QWidget):
         if snapshot.state.finished:
             # The panel is the timer's context: no callback after the panel is gone.
             job_id = snapshot.id
-            QTimer.singleShot(self._linger[snapshot.state], self, lambda: self.remove(job_id))
+            linger = self._linger[JobState.FAILED if snapshot.partial else snapshot.state]
+            QTimer.singleShot(linger, self, lambda: self.remove(job_id))
         self._relayout()
 
     def remove(self, job_id: int) -> None:

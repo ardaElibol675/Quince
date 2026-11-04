@@ -95,3 +95,29 @@ def test_show_in_files_falls_back_without_dbus(monkeypatch, qtbot):
     assert opened == [Path("/x/out")]
     files.show_in_files([], fallback=opened.append)
     assert len(opened) == 1
+
+
+def test_success_card_shows_notes(qtbot):
+    panel = _panel(qtbot)
+    out = (Path("/x/photo.jpg"),)
+    panel.on_event(
+        _snap(JobState.SUCCEEDED, outputs=out, notes=("Transparent areas were filled with white",))
+    )
+    card = panel.cards[1]
+    assert card.detail.text() == "→ photo.jpg\nTransparent areas were filled with white"
+    assert "✓" in card.status.text()
+
+
+def test_partial_success_card(qtbot):
+    panel = _panel(qtbot, success_ms=10, error_ms=60_000)
+    failures = tuple(f"bad{i}.png: not a readable PNG image" for i in range(5))
+    panel.on_event(_snap(JobState.SUCCEEDED, outputs=(Path("/x/a.jpg"),), failures=failures))
+    card = panel.cards[1]
+    lines = card.detail.text().split("\n")
+    assert lines[:2] == ["→ a.jpg", "5 files failed:"]
+    assert lines[2:5] == list(failures[:3])
+    assert lines[5] == "+2 more (see the log)"
+    assert "!" in card.status.text()
+    assert card.files_button.isVisibleTo(panel)
+    qtbot.wait(100)
+    assert 1 in panel.cards  # stays as long as an error card

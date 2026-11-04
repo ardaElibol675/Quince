@@ -5,21 +5,21 @@
 Every format Quince recognizes and the conversions it offers. File types are detected
 by extension and checked against the file content (`src/quince/core/filetype.py`).
 
-47 formats, 16 conversion routes.
+47 formats, 81 conversion routes.
 
 ## Image
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| JPG | JPEG image | `.jpg` `.jpeg` `.jpe` | `image/jpeg` | PNG, WebP | PNG, WebP, HEIC |
-| PNG | PNG image | `.png` | `image/png` | JPG, WebP | JPG, WebP, SVG |
-| WebP | WebP image | `.webp` | `image/webp` | JPG, PNG | JPG, PNG |
-| HEIC | HEIC image | `.heic` `.heif` | `image/heic` | JPG | — |
-| TIFF | TIFF image | `.tiff` `.tif` | `image/tiff` | — | — |
-| AVIF | AVIF image | `.avif` | `image/avif` | — | — |
-| BMP | BMP image | `.bmp` | `image/bmp` | — | — |
-| GIF | GIF image | `.gif` | `image/gif` | — | MP4 |
-| SVG | SVG image | `.svg` | `image/svg+xml` | PNG | — |
+| JPG | JPEG image | `.jpg` `.jpeg` `.jpe` | `image/jpeg` | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG |
+| PNG | PNG image | `.png` | `image/png` | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG |
+| WebP | WebP image | `.webp` | `image/webp` | JPG, PNG, HEIC, TIFF, AVIF, BMP, GIF, PDF | JPG, PNG, HEIC, TIFF, AVIF, BMP, GIF, SVG |
+| HEIC | HEIC image | `.heic` `.heif` | `image/heic` | JPG, PNG, WebP, TIFF, AVIF, BMP, GIF, PDF | JPG, PNG, WebP, TIFF, AVIF, BMP, GIF, SVG |
+| TIFF | TIFF image | `.tiff` `.tif` | `image/tiff` | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, PDF | JPG, PNG, WebP, HEIC, AVIF, BMP, GIF, SVG |
+| AVIF | AVIF image | `.avif` | `image/avif` | JPG, PNG, WebP, HEIC, TIFF, BMP, GIF, PDF | JPG, PNG, WebP, HEIC, TIFF, BMP, GIF, SVG |
+| BMP | BMP image | `.bmp` | `image/bmp` | JPG, PNG, WebP, HEIC, TIFF, AVIF, GIF, PDF | JPG, PNG, WebP, HEIC, TIFF, AVIF, GIF, SVG |
+| GIF | GIF image | `.gif` | `image/gif` | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, PDF | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, MP4 |
+| SVG | SVG image | `.svg` | `image/svg+xml` | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, PDF | — |
 
 ## Audio
 
@@ -49,7 +49,7 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| PDF | PDF document | `.pdf` | `application/pdf` | — | DOCX, ODT |
+| PDF | PDF document | `.pdf` | `application/pdf` | — | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, ODT |
 
 ## Document
 
@@ -106,16 +106,81 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | PNG → JPG | imaging | pillow |
 | WebP → JPG | imaging | pillow |
 | HEIC → JPG | imaging | pillow, pillow-heif |
+| TIFF → JPG | imaging | pillow |
+| AVIF → JPG | imaging | pillow |
+| BMP → JPG | imaging | pillow |
+| GIF → JPG | imaging | pillow |
+| SVG → JPG | imaging | pillow, rsvg-convert |
 | JPG → PNG | imaging | pillow |
 | WebP → PNG | imaging | pillow |
+| HEIC → PNG | imaging | pillow, pillow-heif |
+| TIFF → PNG | imaging | pillow |
+| AVIF → PNG | imaging | pillow |
+| BMP → PNG | imaging | pillow |
+| GIF → PNG | imaging | pillow |
 | SVG → PNG | imaging | pillow, rsvg-convert |
 | JPG → WebP | imaging | pillow |
 | PNG → WebP | imaging | pillow |
+| HEIC → WebP | imaging | pillow, pillow-heif |
+| TIFF → WebP | imaging | pillow |
+| AVIF → WebP | imaging | pillow |
+| BMP → WebP | imaging | pillow |
+| GIF → WebP | imaging | pillow |
+| SVG → WebP | imaging | pillow, rsvg-convert |
+| JPG → HEIC | imaging | pillow, pillow-heif |
+| PNG → HEIC | imaging | pillow, pillow-heif |
+| WebP → HEIC | imaging | pillow, pillow-heif |
+| TIFF → HEIC | imaging | pillow, pillow-heif |
+| AVIF → HEIC | imaging | pillow, pillow-heif |
+| BMP → HEIC | imaging | pillow, pillow-heif |
+| GIF → HEIC | imaging | pillow, pillow-heif |
+| SVG → HEIC | imaging | pillow, rsvg-convert, pillow-heif |
+| JPG → TIFF | imaging | pillow |
+| PNG → TIFF | imaging | pillow |
+| WebP → TIFF | imaging | pillow |
+| HEIC → TIFF | imaging | pillow, pillow-heif |
+| AVIF → TIFF | imaging | pillow |
+| BMP → TIFF | imaging | pillow |
+| GIF → TIFF | imaging | pillow |
+| SVG → TIFF | imaging | pillow, rsvg-convert |
+| JPG → AVIF | imaging | pillow |
+| PNG → AVIF | imaging | pillow |
+| WebP → AVIF | imaging | pillow |
+| HEIC → AVIF | imaging | pillow, pillow-heif |
+| TIFF → AVIF | imaging | pillow |
+| BMP → AVIF | imaging | pillow |
+| GIF → AVIF | imaging | pillow |
+| SVG → AVIF | imaging | pillow, rsvg-convert |
+| JPG → BMP | imaging | pillow |
+| PNG → BMP | imaging | pillow |
+| WebP → BMP | imaging | pillow |
+| HEIC → BMP | imaging | pillow, pillow-heif |
+| TIFF → BMP | imaging | pillow |
+| AVIF → BMP | imaging | pillow |
+| GIF → BMP | imaging | pillow |
+| SVG → BMP | imaging | pillow, rsvg-convert |
+| JPG → GIF | imaging | pillow |
+| PNG → GIF | imaging | pillow |
+| WebP → GIF | imaging | pillow |
+| HEIC → GIF | imaging | pillow, pillow-heif |
+| TIFF → GIF | imaging | pillow |
+| AVIF → GIF | imaging | pillow |
+| BMP → GIF | imaging | pillow |
+| SVG → GIF | imaging | pillow, rsvg-convert |
 | MP4 → GIF | ffmpeg | ffmpeg, ffprobe |
 | WAV → MP3 | ffmpeg | ffmpeg, ffprobe |
 | FLAC → MP3 | ffmpeg | ffmpeg, ffprobe |
 | MP4 → MP3 | ffmpeg | ffmpeg, ffprobe |
 | MOV → MP4 | ffmpeg | ffmpeg, ffprobe |
+| JPG → PDF | imaging | pillow, pymupdf |
+| PNG → PDF | imaging | pillow, pymupdf |
+| WebP → PDF | imaging | pillow, pymupdf |
+| HEIC → PDF | imaging | pillow, pymupdf, pillow-heif |
+| TIFF → PDF | imaging | pillow, pymupdf |
+| AVIF → PDF | imaging | pillow, pymupdf |
+| BMP → PDF | imaging | pillow, pymupdf |
+| GIF → PDF | imaging | pillow, pymupdf |
+| SVG → PDF | imaging | pillow, rsvg-convert |
 | DOCX → PDF | libreoffice | soffice |
 | ODT → PDF | libreoffice | soffice |
 | MD → DOCX | pandoc | pandoc |

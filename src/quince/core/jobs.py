@@ -11,6 +11,10 @@ of time, and the process wrapper (``quince.backends.process``) kills external pr
 
 A job that puts its results in place itself (Move) reports them with ``ctx.add_result()``;
 it is then responsible for leaving a consistent state when it fails.
+
+Batch jobs wrap each file in ``with ctx.item(path):``. A file that fails there loses only its
+own outputs and is reported; the others are kept. The job fails only when every file failed.
+``ctx.note()`` adds a remark for the success card ("Only the first frame was kept").
 """
 
 from __future__ import annotations
@@ -24,8 +28,9 @@ import secrets
 import shutil
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -80,6 +85,12 @@ class JobSnapshot:
     message: str = ""
     outputs: tuple[Path, ...] = ()
     error: str = ""
+    notes: tuple[str, ...] = ()  # remarks on a success ("Only the first frame was kept")
+    failures: tuple[str, ...] = ()  # files that failed in a batch that still succeeded
+
+    @property
+    def partial(self) -> bool:
+        return self.state is JobState.SUCCEEDED and bool(self.failures)
 
 
 @dataclass
@@ -185,6 +196,9 @@ class JobContext:
         self.timed_out = False
         self.outputs: list[_Output] = []
         self.results: list[Path] = []
+        self.notes: list[str] = []
+        self.failures: list[tuple[Path, str]] = []
+        self.items_done = 0
         self._last_progress = 0.0
 
     @property
@@ -241,6 +255,47 @@ class JobContext:
     def add_result(self, path: Path) -> None:
         """Report an output the job already put at its final place (not a temporary one)."""
         self.results.append(Path(path))
+
+    def note(self, text: str) -> None:
+        """A remark shown with the result; the same text is shown once."""
+        if text not in self.notes:
+            self.notes.append(text)
+
+    @contextmanager
+    def item(self, source: Path) -> Iterator[None]:
+        """One file of a batch: if it fails, only its outputs are dropped and the failure is
+        recorded; cancellation still stops the whole job."""
+        start = len(self.outputs)
+        try:
+            yield
+        except JobCancelled:
+            raise
+        except Exception as exc:
+            if isinstance(exc, JobError):
+                reason = exc.reason
+                log.warning(
+                    "job %d: %s failed: %s%s",
+                    self.job_id,
+                    source,
+                    reason,
+                    f"\n{exc.details}" if exc.details else "",
+                )
+            else:
+                reason = f"Unexpected error: {exc}"
+                log.exception("job %d: %s crashed", self.job_id, source)
+            dropped, self.outputs[start:] = self.outputs[start:], []
+            self._queue._discard(dropped)
+            self.failures.append((Path(source), reason))
+        else:
+            self.items_done += 1
+
+
+def _failure_summary(failures: list[tuple[Path, str]]) -> str:
+    """The error of a batch where every file failed."""
+    path, reason = failures[0]
+    if len(failures) == 1:
+        return f"{path.name}: {reason}"
+    return f"{len(failures)} files failed; {path.name}: {reason}"
 
 
 # --- the queue -------------------------------------------------------------------
@@ -380,6 +435,8 @@ class JobQueue:
             job.run(ctx)
             if ctx.outputs:
                 ctx.check()  # a late cancel still wins before temporary outputs move in
+            if ctx.failures and not ctx.items_done:
+                raise JobError(_failure_summary(ctx.failures))
             outputs = [*ctx.results, *self._commit(ctx.outputs)]
         except JobCancelled:
             self._discard(ctx.outputs)
@@ -403,7 +460,18 @@ class JobQueue:
         else:
             names = ", ".join(str(p) for p in outputs)
             log.info("job %d succeeded: %s", job_id, names or "no output")
-            self._update(job_id, state=JobState.SUCCEEDED, progress=1.0, outputs=tuple(outputs))
+            failures = tuple(f"{p.name}: {reason}" for p, reason in ctx.failures)
+            if failures:
+                total = ctx.items_done + len(failures)
+                log.info("job %d: %d of %d file(s) failed", job_id, len(failures), total)
+            self._update(
+                job_id,
+                state=JobState.SUCCEEDED,
+                progress=1.0,
+                outputs=tuple(outputs),
+                notes=tuple(ctx.notes),
+                failures=failures,
+            )
 
     def _commit(self, outputs: list[_Output]) -> list[Path]:
         """Move every temporary output to its final name; never replace an existing file."""

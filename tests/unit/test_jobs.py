@@ -377,3 +377,52 @@ def test_move_no_replace_fallback_keeps_symlinks(tmp_path, monkeypatch):
     os.symlink("target.txt", link)
     move_no_replace(link, tmp_path / "moved")
     assert os.readlink(tmp_path / "moved") == "target.txt"
+
+
+def test_item_failures_keep_the_other_outputs(queue, source, tmp_path):
+    other = tmp_path / "other.png"
+    other.write_bytes(b"x")
+
+    def run(ctx):
+        for path in (source, other):
+            with ctx.item(path):
+                ctx.new_output(path, extension="txt").write_text("partial")
+                if path == other:
+                    raise JobError("cannot read it")
+        ctx.note("a remark")
+        ctx.note("a remark")
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source, other), title="t"))
+    assert snap.state is JobState.SUCCEEDED and snap.partial
+    assert snap.outputs == (tmp_path / "photo.txt",)
+    assert snap.failures == ("other.png: cannot read it",)
+    assert snap.notes == ("a remark",)
+    assert _listing(tmp_path) == ["other.png", "photo.png", "photo.txt"]  # no partial file
+
+
+def test_job_fails_when_every_item_failed(queue, source, tmp_path):
+    other = tmp_path / "other.png"
+    other.write_bytes(b"x")
+
+    def run(ctx):
+        for path in (i.path for i in ctx.selection.files):
+            with ctx.item(path):
+                raise ValueError("boom") if path == other else JobError("bad header")
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source, other), title="t"))
+    assert snap.state is JobState.FAILED
+    assert snap.error == "2 files failed; photo.png: bad header"
+    one = wait_finished(queue, queue.submit(run, _sel(source), title="t"))
+    assert one.error == "photo.png: bad header"
+
+
+def test_cancel_inside_an_item_cancels_the_job(queue, source):
+    def run(ctx):
+        with ctx.item(source):
+            ctx.new_output(source, extension="txt").write_text("x")
+            ctx._cancel.set()
+            ctx.check()
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source), title="t"))
+    assert snap.state is JobState.CANCELLED
+    assert _listing(source.parent) == ["photo.png"]

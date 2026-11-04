@@ -83,7 +83,15 @@ and `unrar`, which were not installed at the time. Run the script again after in
 - Write and read back: PNG, JPEG, WebP, TIFF, BMP, GIF, HEIC, AVIF; PDF write. All ok.
 - HEIC is encoded by the libheif/x265 build bundled in the `pillow-heif` wheel. AVIF uses
   Pillow's native plugin (Pillow ≥ 11.2). No apt package is needed for either.
-- SVG input needs `rsvg-convert` (pending install).
+- SVG input needs `rsvg-convert` (`librsvg2-bin`, pending install); without it the SVG
+  routes are hidden and their tests skipped.
+- Phase 7 measured a 12 MP photo (JPG source) into every target: 0.1–1.7 s each; HEIC is the
+  slowest, PDF the fastest (the JPEG is embedded as it is).
+- **Viewing the outputs:** Eye of GNOME decodes with gdk-pixbuf, which on 22.04 has no WebP,
+  HEIC or AVIF loader by default. This does not affect Quince; to open those files in the
+  image viewer install `sudo apt install webp-pixbuf-loader heif-gdk-pixbuf libavif-gdk-pixbuf`.
+  `tests/integration/test_image_routes.py` checks every output with the gdk-pixbuf loaders
+  that are installed.
 
 ### Audio and video (ffmpeg 4.4.2)
 - Audio encoders ok: MP3 (`libmp3lame`), M4A (`aac`), WAV (`pcm_s16le`), FLAC, OGG
