@@ -17,6 +17,11 @@ are in the dialog's sidebar), **Copy Path**, **Show in Files**, **Open With**, *
 Terminal** and **Float**, which puts the files on a small always-on-top shelf to drag them
 out later (dragging out always copies).
 
+The Tools wheel offers **Compress** (by quality, a percentage or a target size), **Metadata**
+(view, and save a copy without it), **Remove Audio**, **Normalize** loudness, **Extract**
+archives, **Join** videos, **Merge PDFs**, images **To One PDF** and **Read QR** codes; the
+Actions wheel also has **Archive** (ZIP, TAR.GZ, 7Z).
+
 Without a drag: the **Quince window** (app menu, tray icon or `quince home`) has a drop area,
 Open Files (Ctrl+O) and Paste (Ctrl+V); select files and press Enter or tap a trigger key for
 a wheel. The **Library** tab (Ctrl+F) lists every file Quince made. In Nautilus, right-click

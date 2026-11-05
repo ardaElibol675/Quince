@@ -195,21 +195,23 @@ FODS = f"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def _slide(name: str, title: str) -> str:
-    return (
-        f'<draw:page draw:name="{name}">'
-        '<draw:frame svg:x="2cm" svg:y="2cm" svg:width="22cm" svg:height="3cm">'
-        f"<draw:text-box><text:p>{title}</text:p></draw:text-box></draw:frame></draw:page>"
-    )
+# Presentations are written by pandoc (real title and body placeholders, speaker notes, a
+# table: what the → TXT / MD routes read), then converted by LibreOffice to ODP and PPT.
+SLIDES_MARKDOWN = """# Quince slide one
 
+- Ayva ağacı
+    - Çiçek \\*açar\\* | 2 kat
+- Meyve verir
 
-FODP = f"""<?xml version="1.0" encoding="UTF-8"?>
-<office:document {_NS} office:mimetype="application/vnd.oasis.opendocument.presentation">
- <office:body><office:presentation>
-  {_slide("Slide1", "Quince slide one")}
-  {_slide("Slide2", "Quince slide two")}
- </office:presentation></office:body>
-</office:document>
+::: notes
+Konuşmacı notu
+:::
+
+# Quince slide two
+
+| Ad   | Şehir |
+|------|-------|
+| Ayşe | İzmir |
 """
 
 # target extension -> (flat ODF source, LibreOffice --convert-to argument)
@@ -221,11 +223,10 @@ OFFICE_TARGETS: dict[str, tuple[str, str]] = {
     "ods": ("fods", "ods"),
     "xlsx": ("fods", "xlsx:Calc MS Excel 2007 XML"),
     "xls": ("fods", "xls:MS Excel 97"),
-    "odp": ("fodp", "odp"),
-    "pptx": ("fodp", "pptx:Impress MS PowerPoint 2007 XML"),
-    "ppt": ("fodp", "ppt:MS PowerPoint 97"),
+    "odp": ("pptx", "odp"),
+    "ppt": ("pptx", "ppt:MS PowerPoint 97"),
 }
-FLAT_SOURCES = {"fodt": FODT, "fods": FODS, "fodp": FODP}
+FLAT_SOURCES = {"fodt": FODT, "fods": FODS}
 
 
 def soffice_convert(src: Path, convert_to: str, outdir: Path) -> Path:
@@ -251,12 +252,23 @@ def soffice_convert(src: Path, convert_to: str, outdir: Path) -> Path:
     return produced
 
 
+def make_pptx(out: Path) -> None:
+    pandoc = need("pandoc")
+    with tempfile.TemporaryDirectory(prefix="quince-fx-") as tmp:
+        src = Path(tmp) / "slides.md"
+        src.write_text(SLIDES_MARKDOWN, encoding="utf-8")
+        run([pandoc, str(src), "-o", str(out)])
+
+
 def make_office(ext: str, out: Path) -> None:
     flat_ext, convert_to = OFFICE_TARGETS[ext]
     need("soffice")
     with tempfile.TemporaryDirectory(prefix="quince-fx-") as tmp:
         src = Path(tmp) / f"{out.stem}.{flat_ext}"
-        src.write_text(FLAT_SOURCES[flat_ext], encoding="utf-8")
+        if flat_ext == "pptx":
+            make_pptx(src)
+        else:
+            src.write_text(FLAT_SOURCES[flat_ext], encoding="utf-8")
         produced = soffice_convert(src, convert_to, Path(tmp))
         shutil.move(str(produced), out)
 
@@ -294,6 +306,15 @@ Hello from Quince.
 Second line.
 """
 
+# Source code with what a Markdown fence must survive: backticks, pipes, Turkish letters.
+PYTHON = '''"""Quince örnek kodu."""
+
+
+def greet(name: str) -> str:
+    # ``` is not a fence here | neither is a pipe
+    return f"Merhaba, {name}!"
+'''
+
 TEXT_FILES: dict[str, str] = {
     "sample.txt": "Hello from Quince.\nSecond line.\n",
     "sample.md": MARKDOWN,
@@ -303,6 +324,7 @@ TEXT_FILES: dict[str, str] = {
     "sample.srt": SRT,
     "sample.vtt": VTT,
     "sample.svg": SVG,
+    "sample.py": PYTHON,
 }
 
 
@@ -488,6 +510,143 @@ def make_7z(out: Path) -> None:
 # --- registry ---------------------------------------------------------------
 
 
+# --- a QR code, without a QR library ------------------------------------------------------
+# A small encoder for the Read QR codes test: byte mode, error correction level L, versions
+# 1-5 (a single Reed-Solomon block each), mask 0. Following the layout of Nayuki's reference
+# implementation (MIT). zbarimg must read QR_TEXT back from sample-qr.png.
+
+QR_TEXT = "QUINCE-QR-TEST https://example.org/quince?x=1&y=2"
+_QR_L_CAPACITY = {1: (19, 7), 2: (34, 10), 3: (55, 15), 4: (80, 20), 5: (108, 26)}
+
+
+def _gf_mul(x: int, y: int) -> int:
+    z = 0
+    for i in reversed(range(8)):
+        z = (z << 1) ^ ((z >> 7) * 0x11D)
+        z ^= ((y >> i) & 1) * x
+    return z
+
+
+def _rs_divisor(degree: int) -> list[int]:
+    result = [0] * (degree - 1) + [1]
+    root = 1
+    for _ in range(degree):
+        for j in range(degree):
+            result[j] = _gf_mul(result[j], root)
+            if j + 1 < degree:
+                result[j] ^= result[j + 1]
+        root = _gf_mul(root, 0x02)
+    return result
+
+
+def _rs_remainder(data: list[int], divisor: list[int]) -> list[int]:
+    result = [0] * len(divisor)
+    for byte in data:
+        factor = byte ^ result.pop(0)
+        result.append(0)
+        for i, coef in enumerate(divisor):
+            result[i] ^= _gf_mul(coef, factor)
+    return result
+
+
+def qr_matrix(text: str) -> list[list[bool]]:
+    payload = text.encode("utf-8")
+    version = next(v for v, (cw, _ec) in _QR_L_CAPACITY.items() if 12 + 8 * len(payload) <= cw * 8)
+    data_cw, ec_cw = _QR_L_CAPACITY[version]
+    bits = "0100" + f"{len(payload):08b}" + "".join(f"{b:08b}" for b in payload)
+    bits += "0" * min(4, data_cw * 8 - len(bits))
+    bits += "0" * (-len(bits) % 8)
+    data = [int(bits[i : i + 8], 2) for i in range(0, len(bits), 8)]
+    pad = 0xEC
+    while len(data) < data_cw:
+        data.append(pad)
+        pad ^= 0xEC ^ 0x11
+    codewords = data + _rs_remainder(data, _rs_divisor(ec_cw))
+
+    size = 17 + 4 * version
+    dark = [[False] * size for _ in range(size)]
+    function = [[False] * size for _ in range(size)]
+
+    def put(x: int, y: int, value: bool) -> None:
+        dark[y][x] = value
+        function[y][x] = True
+
+    for i in range(size):  # timing patterns
+        put(6, i, i % 2 == 0)
+        put(i, 6, i % 2 == 0)
+    for cx, cy in ((3, 3), (size - 4, 3), (3, size - 4)):  # finder patterns and separators
+        for dy in range(-4, 5):
+            for dx in range(-4, 5):
+                x, y = cx + dx, cy + dy
+                if 0 <= x < size and 0 <= y < size:
+                    put(x, y, max(abs(dx), abs(dy)) not in (2, 4))
+    if version > 1:  # one alignment pattern
+        center = 4 * version + 10
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                put(center + dx, center + dy, max(abs(dx), abs(dy)) != 1)
+
+    # format information: level L (01), mask 0
+    fmt = 1 << 3
+    rem = fmt
+    for _ in range(10):
+        rem = (rem << 1) ^ ((rem >> 9) * 0x537)
+    fbits = ((fmt << 10) | rem) ^ 0x5412
+
+    def bit(i: int) -> bool:
+        return (fbits >> i) & 1 == 1
+
+    for i in range(6):
+        put(8, i, bit(i))
+    put(8, 7, bit(6))
+    put(8, 8, bit(7))
+    put(7, 8, bit(8))
+    for i in range(9, 15):
+        put(14 - i, 8, bit(i))
+    for i in range(8):
+        put(size - 1 - i, 8, bit(i))
+    for i in range(8, 15):
+        put(8, size - 15 + i, bit(i))
+    put(8, size - 8, True)  # the dark module
+
+    i = 0
+    total = len(codewords) * 8
+    right = size - 1
+    while right >= 1:
+        if right == 6:
+            right = 5
+        for vert in range(size):
+            for j in range(2):
+                x = right - j
+                upward = ((right + 1) & 2) == 0
+                y = size - 1 - vert if upward else vert
+                if not function[y][x] and i < total:
+                    dark[y][x] = (codewords[i >> 3] >> (7 - (i & 7))) & 1 == 1
+                    i += 1
+        right -= 2
+    for y in range(size):  # mask 0
+        for x in range(size):
+            if not function[y][x] and (x + y) % 2 == 0:
+                dark[y][x] = not dark[y][x]
+    return dark
+
+
+def make_qr(out: Path, scale: int = 8, border: int = 4) -> None:
+    from PIL import Image
+
+    matrix = qr_matrix(QR_TEXT)
+    size = (len(matrix) + 2 * border) * scale
+    im = Image.new("L", (size, size), 255)
+    pixels = im.load()
+    for y, row in enumerate(matrix):
+        for x, value in enumerate(row):
+            if value:
+                for py in range((y + border) * scale, (y + border + 1) * scale):
+                    for px in range((x + border) * scale, (x + border + 1) * scale):
+                        pixels[px, py] = 0
+    im.save(out)
+
+
 def fixtures() -> dict[str, Callable[[Path], None]]:
     """Map fixture file name -> generator."""
     table: dict[str, Callable[[Path], None]] = {}
@@ -498,11 +657,13 @@ def fixtures() -> dict[str, Callable[[Path], None]]:
     for ext, fmt in image_formats.items():
         table[f"sample.{ext}"] = lambda out, fmt=fmt: make_image(fmt, out)
     table["sample-animated.gif"] = make_animated_gif
+    table["sample-qr.png"] = make_qr
     for ext in AUDIO_CODECS:
         table[f"sample-audio.{ext}"] = lambda out, ext=ext: make_audio(ext, out)
     for ext in VIDEO_CODECS:
         table[f"sample-video.{ext}"] = lambda out, ext=ext: make_video(ext, out)
     table["sample.pdf"] = make_pdf
+    table["sample.pptx"] = make_pptx
     for ext in OFFICE_TARGETS:
         table[f"sample.{ext}"] = lambda out, ext=ext: make_office(ext, out)
     for name, content in TEXT_FILES.items():

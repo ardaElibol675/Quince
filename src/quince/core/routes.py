@@ -26,6 +26,7 @@ BACKEND_REQUIRES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "subtitles": ("pysubs2",),
         "archive": (),
         "table": (),
+        "text": (),
     }
 )
 

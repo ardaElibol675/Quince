@@ -11,7 +11,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from quince.core import formats
+from quince.core import coverage, formats
 from quince.core.registry import Registry, discover
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,6 +20,35 @@ OUT = ROOT / "docs" / "FORMATS.md"
 
 def _labels(format_ids: list[str]) -> str:
     return ", ".join(formats.get(f).label for f in format_ids) or "—"
+
+
+def _group(format_ids: tuple[str, ...]) -> str:
+    """Format ids as text, whole categories named once ("all Audio")."""
+    chosen = set(format_ids)
+    parts = []
+    for category in formats.Category:
+        members = [f.id for f in formats.in_category(category)]
+        inside = [f for f in members if f in chosen]
+        if inside and len(inside) == len(members) and len(members) > 1:
+            parts.append(f"all {category.label}")
+        else:
+            parts += [formats.get(f).label for f in inside]
+    return ", ".join(parts)
+
+
+def _left_out() -> list[str]:
+    lines = [
+        "## Left out on purpose",
+        "",
+        "Conversions the backends could do (directly or chained) that are not offered, with",
+        "the reason. `scripts/audit_routes.py` checks that every other one is a route.",
+        "",
+        "| From | To | Why |",
+        "|------|----|-----|",
+    ]
+    for e in coverage.EXCLUSIONS:
+        lines.append(f"| {_group(e.sources)} | {_group(e.targets)} | {e.reason} |")
+    return lines
 
 
 LIMITATIONS = """## Limitations (best effort)
@@ -46,6 +75,12 @@ description. Lists use pandoc 2.9's indentation (`  - item`, `1.  item`), which 
 
 **Spreadsheets:** CSV/TSV → XLSX/ODS reads numbers as numbers (`007` becomes `7`), like any
 spreadsheet program; CSV ⇄ TSV keeps every value as it is.
+
+**Plain text → Markdown** keeps every line break (a hard break) and escapes what Markdown
+would read as markup; leading spaces are dropped. **Sheets → Markdown/HTML**: the first row
+is the header, values as shown, one table per sheet. **Slides → Markdown/TXT**: titles,
+points, tables and speaker notes; pictures and charts are left out. **Source code → HTML/PDF**
+is highlighted by pandoc (TOML is not highlighted by pandoc 2.9).
 
 **Archives:** symbolic links are kept, set-uid bits and device files are not; ZIP stores
 times before 1980 as 1980-01-01. Password-protected archives are refused.
@@ -90,7 +125,7 @@ def render(registry: Registry | None = None) -> str:
     for routes in table.by_target().values():
         for route in routes:
             lines.append(f"| {route} | {route.backend} | {', '.join(route.all_requires) or '—'} |")
-    return "\n".join([*lines, "", LIMITATIONS]) + "\n"
+    return "\n".join([*lines, "", *_left_out(), "", LIMITATIONS]) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -8,6 +8,9 @@ between them. ``resolve`` combines both:
 - the extension's format wins when the content agrees with it or tells nothing;
 - otherwise the content wins (a PNG named ``photo.jpg`` is a PNG);
 - with neither, the type is unknown.
+
+A plain-text extension is not believed for binary content Quince cannot name (an MPEG
+transport stream named ``clip.ts`` is not TypeScript).
 """
 
 from __future__ import annotations
@@ -250,7 +253,20 @@ def resolve(by_extension: Format | None, by_content: Sequence[str]) -> Format | 
     return None
 
 
+def _binary(path: Path) -> bool:
+    try:
+        with open(path, "rb") as f:
+            head = f.read(SNIFF_BYTES)
+    except OSError:
+        return False
+    return bool(head) and not _is_text(head)
+
+
 def detect(path: Path) -> Format | None:
     """The format of the file at ``path``, or None if Quince does not know it."""
     path = Path(path)
-    return resolve(formats.from_filename(path.name), sniff(path))
+    by_extension = formats.from_filename(path.name)
+    by_content = sniff(path)
+    if by_extension is not None and by_extension.text and not by_content and _binary(path):
+        by_extension = None
+    return resolve(by_extension, by_content)

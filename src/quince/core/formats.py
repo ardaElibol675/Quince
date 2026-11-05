@@ -20,6 +20,7 @@ class Category(str, Enum):
     SPREADSHEET = "spreadsheet"
     SUBTITLE = "subtitle"
     ARCHIVE = "archive"
+    CODE = "code"
 
     @property
     def label(self) -> str:
@@ -41,6 +42,7 @@ _CATEGORY_LABELS = {
     Category.SPREADSHEET: "Spreadsheet",
     Category.SUBTITLE: "Subtitle",
     Category.ARCHIVE: "Archive",
+    Category.CODE: "Code",
 }
 
 _CATEGORY_ICONS = {
@@ -53,6 +55,7 @@ _CATEGORY_ICONS = {
     Category.SPREADSHEET: "x-office-spreadsheet",
     Category.SUBTITLE: "text-x-generic",
     Category.ARCHIVE: "package-x-generic",
+    Category.CODE: "text-x-script",
 }
 
 
@@ -63,6 +66,8 @@ class Format:
     ``extensions`` are lowercase without the leading dot; the first one is used for outputs.
     ``mime_types`` use shared-mime-info names; the first one is canonical.
     ``text`` marks plain-text formats, which content sniffing cannot tell apart.
+    ``syntax`` is the language name of source code (a Markdown fence tag that pandoc's
+    highlighter knows, e.g. ``python``).
     """
 
     id: str
@@ -72,6 +77,7 @@ class Format:
     extensions: tuple[str, ...]
     mime_types: tuple[str, ...]
     text: bool = False
+    syntax: str = ""
 
     @property
     def extension(self) -> str:
@@ -84,6 +90,7 @@ class Format:
 
 _I, _A, _V = Category.IMAGE, Category.AUDIO, Category.VIDEO
 _D, _S, _X = Category.DOCUMENT, Category.SLIDES, Category.SPREADSHEET
+_C = Category.CODE
 _OOXML = "application/vnd.openxmlformats-officedocument"
 _ODF = "application/vnd.oasis.opendocument"
 
@@ -144,6 +151,28 @@ FORMATS: tuple[Format, ...] = (
     Format("targz", "TAR.GZ", "Gzip-compressed tar archive", Category.ARCHIVE, ("tar.gz", "tgz"), ("application/x-compressed-tar", "application/gzip")),
     Format("7z", "7Z", "7-Zip archive", Category.ARCHIVE, ("7z",), ("application/x-7z-compressed",)),
     Format("rar", "RAR", "RAR archive", Category.ARCHIVE, ("rar",), ("application/vnd.rar", "application/x-rar")),
+    # Source code and configuration (plain text with a language; syntax = fence tag)
+    Format("py", "Python", "Python source", _C, ("py", "pyw"), ("text/x-python3", "text/x-python"), text=True, syntax="python"),
+    Format("js", "JavaScript", "JavaScript source", _C, ("js", "mjs", "cjs", "jsx"), ("application/javascript", "text/javascript"), text=True, syntax="javascript"),
+    Format("ts", "TypeScript", "TypeScript source", _C, ("ts", "mts", "cts", "tsx"), ("text/x-typescript",), text=True, syntax="typescript"),
+    Format("json", "JSON", "JSON data", _C, ("json",), ("application/json",), text=True, syntax="json"),
+    Format("yaml", "YAML", "YAML data", _C, ("yaml", "yml"), ("application/x-yaml", "application/yaml"), text=True, syntax="yaml"),
+    Format("toml", "TOML", "TOML configuration", _C, ("toml",), ("text/x-toml", "application/toml"), text=True, syntax="toml"),
+    Format("ini", "INI", "INI configuration", _C, ("ini", "cfg", "conf"), ("text/x-ini",), text=True, syntax="ini"),
+    Format("sh", "Shell", "Shell script", _C, ("sh", "bash", "zsh"), ("application/x-shellscript",), text=True, syntax="bash"),
+    Format("c", "C", "C source", _C, ("c", "h"), ("text/x-csrc", "text/x-chdr"), text=True, syntax="c"),
+    Format("cpp", "C++", "C++ source", _C, ("cpp", "cc", "cxx", "hpp", "hh", "hxx"), ("text/x-c++src", "text/x-c++hdr"), text=True, syntax="cpp"),
+    Format("cs", "C#", "C# source", _C, ("cs",), ("text/x-csharp",), text=True, syntax="cs"),
+    Format("java", "Java", "Java source", _C, ("java",), ("text/x-java",), text=True, syntax="java"),
+    Format("kt", "Kotlin", "Kotlin source", _C, ("kt", "kts"), ("text/x-kotlin",), text=True, syntax="kotlin"),
+    Format("go", "Go", "Go source", _C, ("go",), ("text/x-go",), text=True, syntax="go"),
+    Format("rs", "Rust", "Rust source", _C, ("rs",), ("text/rust", "text/x-rust"), text=True, syntax="rust"),
+    Format("php", "PHP", "PHP source", _C, ("php",), ("application/x-php",), text=True, syntax="php"),
+    Format("rb", "Ruby", "Ruby source", _C, ("rb",), ("application/x-ruby",), text=True, syntax="ruby"),
+    Format("lua", "Lua", "Lua source", _C, ("lua",), ("text/x-lua",), text=True, syntax="lua"),
+    Format("sql", "SQL", "SQL script", _C, ("sql",), ("application/sql", "text/x-sql"), text=True, syntax="sql"),
+    Format("xml", "XML", "XML document", _C, ("xml",), ("application/xml", "text/xml"), text=True, syntax="xml"),
+    Format("css", "CSS", "CSS stylesheet", _C, ("css",), ("text/css",), text=True, syntax="css"),
 )  # fmt: skip
 
 

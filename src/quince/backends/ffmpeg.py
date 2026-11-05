@@ -110,8 +110,8 @@ def parse_probe(text: str) -> MediaInfo:
     return MediaInfo(tuple(streams), duration if duration and duration > 0 else None)
 
 
-def probe(path: Path, ctx: JobContext | None = None) -> MediaInfo:
-    """Streams and duration of a media file; ``JobError`` when ffprobe cannot read it."""
+def probe_text(path: Path, ctx: JobContext | None = None) -> str:
+    """ffprobe's JSON for the streams and the container (with their tags)."""
     lines: list[str] = []
     try:
         process.run(
@@ -122,8 +122,22 @@ def probe(path: Path, ctx: JobContext | None = None) -> MediaInfo:
         )
     except process.BackendError as exc:
         raise JobError("Not a readable audio or video file", exc.details) from exc
+    return "\n".join(lines)
+
+
+def probe_json(path: Path, ctx: JobContext | None = None) -> dict:
     try:
-        return parse_probe("\n".join(lines))
+        data = json.loads(probe_text(path, ctx) or "{}")
+    except ValueError as exc:
+        raise JobError("Cannot read the streams of this file", str(exc)) from exc
+    return data if isinstance(data, dict) else {}
+
+
+def probe(path: Path, ctx: JobContext | None = None) -> MediaInfo:
+    """Streams and duration of a media file; ``JobError`` when ffprobe cannot read it."""
+    text = probe_text(path, ctx)
+    try:
+        return parse_probe(text)
     except ValueError as exc:
         raise JobError("Cannot read the streams of this file", str(exc)) from exc
 
@@ -178,10 +192,12 @@ def run_ffmpeg(
     *,
     duration_s: float | None = None,
     timeout_s: float | None = None,
+    report: Callable[[float | None], None] | None = None,
+    on_stderr: Callable[[str], None] | None = None,
 ) -> process.ProcessResult:
-    """Run ``ffmpeg BASE_ARGS args`` and report its progress to ``ctx``."""
+    """Run ``ffmpeg BASE_ARGS args`` and report its progress to ``ctx`` (or ``report``)."""
 
-    def report(fraction: float | None) -> None:
+    def to_ctx(fraction: float | None) -> None:
         if ctx is not None:
             ctx.progress(fraction)
 
@@ -189,5 +205,18 @@ def run_ffmpeg(
         ["ffmpeg", *BASE_ARGS, *args],
         ctx,
         timeout_s=timeout_s,
-        on_stdout=progress_parser(duration_s, report),
+        on_stdout=progress_parser(duration_s, report or to_ctx),
+        on_stderr=on_stderr,
     )
+
+
+def sub_progress(
+    ctx: JobContext | None, start: float, end: float
+) -> Callable[[float | None], None]:
+    """A ``report`` callback mapping 0..1 to ``start..end`` of the current file's progress."""
+
+    def report(fraction: float | None) -> None:
+        if ctx is not None:
+            ctx.progress(None if fraction is None else start + fraction * (end - start))
+
+    return report

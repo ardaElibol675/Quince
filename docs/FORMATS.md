@@ -5,7 +5,7 @@
 Every format Quince recognizes and the conversions it offers. File types are detected
 by extension and checked against the file content (`src/quince/core/filetype.py`).
 
-47 formats, 305 conversion routes.
+68 formats, 409 conversion routes.
 
 ## Image
 
@@ -49,7 +49,7 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| PDF | PDF document | `.pdf` | `application/pdf` | JPG, PNG, DOCX, ODT, MD, TXT, EPUB, PPTX, XLSX | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, MD, TXT, EPUB, HTML, PPTX, PPT, ODP, XLSX, XLS, ODS, CSV, TSV |
+| PDF | PDF document | `.pdf` | `application/pdf` | JPG, PNG, DOCX, ODT, MD, TXT, EPUB, HTML, PPTX, XLSX | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG, DOCX, DOC, ODT, RTF, MD, TXT, EPUB, HTML, PPTX, PPT, ODP, XLSX, XLS, ODS, CSV, TSV, Python, JavaScript, TypeScript, JSON, YAML, TOML, INI, Shell, C, C++, C#, Java, Kotlin, Go, Rust, PHP, Ruby, Lua, SQL, XML, CSS |
 
 ## Document
 
@@ -59,28 +59,28 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | DOC | Word 97-2003 document | `.doc` | `application/msword` | JPG, PNG, PDF, DOCX, ODT, MD, TXT, EPUB, HTML | — |
 | ODT | OpenDocument text | `.odt` | `application/vnd.oasis.opendocument.text` | JPG, PNG, PDF, DOCX, MD, TXT, EPUB, HTML | PDF, DOCX, DOC, RTF, MD, TXT, EPUB, HTML |
 | RTF | Rich Text document | `.rtf` | `application/rtf` | JPG, PNG, PDF, DOCX, ODT, MD, TXT, EPUB, HTML | — |
-| MD | Markdown | `.md` `.markdown` | `text/markdown` | PDF, DOCX, ODT, TXT, EPUB, HTML | PDF, DOCX, DOC, ODT, RTF, EPUB, HTML |
-| TXT | Plain text | `.txt` `.text` | `text/plain` | PDF, DOCX, ODT | PDF, DOCX, DOC, ODT, RTF, MD, EPUB, HTML, SRT, VTT |
-| EPUB | EPUB e-book | `.epub` | `application/epub+zip` | PDF, DOCX, ODT, MD, TXT, HTML | PDF, DOCX, DOC, ODT, RTF, MD, HTML |
-| HTML | HTML page | `.html` `.htm` `.xhtml` | `text/html` | PDF, DOCX, ODT, MD, TXT, EPUB | DOCX, DOC, ODT, RTF, MD, EPUB |
+| MD | Markdown | `.md` `.markdown` | `text/markdown` | PDF, DOCX, ODT, TXT, EPUB, HTML | PDF, DOCX, DOC, ODT, RTF, TXT, EPUB, HTML, PPTX, PPT, ODP, XLSX, XLS, ODS, CSV, TSV, Python, JavaScript, TypeScript, JSON, YAML, TOML, INI, Shell, C, C++, C#, Java, Kotlin, Go, Rust, PHP, Ruby, Lua, SQL, XML, CSS |
+| TXT | Plain text | `.txt` `.text` | `text/plain` | PDF, DOCX, ODT, MD, EPUB, HTML | PDF, DOCX, DOC, ODT, RTF, MD, EPUB, HTML, PPTX, PPT, ODP, SRT, VTT, Python, JavaScript, TypeScript, JSON, YAML, TOML, INI, Shell, C, C++, C#, Java, Kotlin, Go, Rust, PHP, Ruby, Lua, SQL, XML, CSS |
+| EPUB | EPUB e-book | `.epub` | `application/epub+zip` | PDF, DOCX, ODT, MD, TXT, HTML | PDF, DOCX, DOC, ODT, RTF, MD, TXT, HTML |
+| HTML | HTML page | `.html` `.htm` `.xhtml` | `text/html` | PDF, DOCX, ODT, MD, TXT, EPUB | PDF, DOCX, DOC, ODT, RTF, MD, TXT, EPUB, XLSX, XLS, ODS, CSV, TSV, Python, JavaScript, TypeScript, JSON, YAML, TOML, INI, Shell, C, C++, C#, Java, Kotlin, Go, Rust, PHP, Ruby, Lua, SQL, XML, CSS |
 
 ## Slides
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| PPTX | PowerPoint presentation | `.pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` | JPG, PNG, PDF, ODP | PDF, PPT, ODP |
-| PPT | PowerPoint 97-2003 presentation | `.ppt` | `application/vnd.ms-powerpoint` | JPG, PNG, PDF, PPTX, ODP | — |
-| ODP | OpenDocument presentation | `.odp` | `application/vnd.oasis.opendocument.presentation` | JPG, PNG, PDF, PPTX | PPTX, PPT |
+| PPTX | PowerPoint presentation | `.pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` | JPG, PNG, PDF, MD, TXT, ODP | PDF, PPT, ODP |
+| PPT | PowerPoint 97-2003 presentation | `.ppt` | `application/vnd.ms-powerpoint` | JPG, PNG, PDF, MD, TXT, PPTX, ODP | — |
+| ODP | OpenDocument presentation | `.odp` | `application/vnd.oasis.opendocument.presentation` | JPG, PNG, PDF, MD, TXT, PPTX | PPTX, PPT |
 
 ## Spreadsheet
 
 | Format | Name | Extensions | MIME type | Converts to | Made from |
 |--------|------|------------|-----------|-------------|-----------|
-| XLSX | Excel workbook | `.xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | PDF, ODS, CSV, TSV | PDF, XLS, ODS, CSV, TSV |
-| XLS | Excel 97-2003 workbook | `.xls` | `application/vnd.ms-excel` | PDF, XLSX, ODS, CSV, TSV | — |
-| ODS | OpenDocument spreadsheet | `.ods` | `application/vnd.oasis.opendocument.spreadsheet` | PDF, XLSX, CSV, TSV | XLSX, XLS, CSV, TSV |
-| CSV | Comma-separated values | `.csv` | `text/csv` | PDF, XLSX, ODS, TSV | XLSX, XLS, ODS, TSV |
-| TSV | Tab-separated values | `.tsv` `.tab` | `text/tab-separated-values` | PDF, XLSX, ODS, CSV | XLSX, XLS, ODS, CSV |
+| XLSX | Excel workbook | `.xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | PDF, MD, HTML, ODS, CSV, TSV | PDF, XLS, ODS, CSV, TSV |
+| XLS | Excel 97-2003 workbook | `.xls` | `application/vnd.ms-excel` | PDF, MD, HTML, XLSX, ODS, CSV, TSV | — |
+| ODS | OpenDocument spreadsheet | `.ods` | `application/vnd.oasis.opendocument.spreadsheet` | PDF, MD, HTML, XLSX, CSV, TSV | XLSX, XLS, CSV, TSV |
+| CSV | Comma-separated values | `.csv` | `text/csv` | PDF, MD, HTML, XLSX, ODS, TSV | XLSX, XLS, ODS, TSV |
+| TSV | Tab-separated values | `.tsv` `.tab` | `text/tab-separated-values` | PDF, MD, HTML, XLSX, ODS, CSV | XLSX, XLS, ODS, CSV |
 
 ## Subtitle
 
@@ -98,6 +98,32 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | TAR.GZ | Gzip-compressed tar archive | `.tar.gz` `.tgz` | `application/x-compressed-tar` | ZIP, TAR, 7Z | ZIP, TAR, 7Z, RAR |
 | 7Z | 7-Zip archive | `.7z` | `application/x-7z-compressed` | ZIP, TAR, TAR.GZ | ZIP, TAR, TAR.GZ, RAR |
 | RAR | RAR archive | `.rar` | `application/vnd.rar` | ZIP, TAR, TAR.GZ, 7Z | — |
+
+## Code
+
+| Format | Name | Extensions | MIME type | Converts to | Made from |
+|--------|------|------------|-----------|-------------|-----------|
+| Python | Python source | `.py` `.pyw` | `text/x-python3` | PDF, MD, TXT, HTML | — |
+| JavaScript | JavaScript source | `.js` `.mjs` `.cjs` `.jsx` | `application/javascript` | PDF, MD, TXT, HTML | — |
+| TypeScript | TypeScript source | `.ts` `.mts` `.cts` `.tsx` | `text/x-typescript` | PDF, MD, TXT, HTML | — |
+| JSON | JSON data | `.json` | `application/json` | PDF, MD, TXT, HTML | — |
+| YAML | YAML data | `.yaml` `.yml` | `application/x-yaml` | PDF, MD, TXT, HTML | — |
+| TOML | TOML configuration | `.toml` | `text/x-toml` | PDF, MD, TXT, HTML | — |
+| INI | INI configuration | `.ini` `.cfg` `.conf` | `text/x-ini` | PDF, MD, TXT, HTML | — |
+| Shell | Shell script | `.sh` `.bash` `.zsh` | `application/x-shellscript` | PDF, MD, TXT, HTML | — |
+| C | C source | `.c` `.h` | `text/x-csrc` | PDF, MD, TXT, HTML | — |
+| C++ | C++ source | `.cpp` `.cc` `.cxx` `.hpp` `.hh` `.hxx` | `text/x-c++src` | PDF, MD, TXT, HTML | — |
+| C# | C# source | `.cs` | `text/x-csharp` | PDF, MD, TXT, HTML | — |
+| Java | Java source | `.java` | `text/x-java` | PDF, MD, TXT, HTML | — |
+| Kotlin | Kotlin source | `.kt` `.kts` | `text/x-kotlin` | PDF, MD, TXT, HTML | — |
+| Go | Go source | `.go` | `text/x-go` | PDF, MD, TXT, HTML | — |
+| Rust | Rust source | `.rs` | `text/rust` | PDF, MD, TXT, HTML | — |
+| PHP | PHP source | `.php` | `application/x-php` | PDF, MD, TXT, HTML | — |
+| Ruby | Ruby source | `.rb` | `application/x-ruby` | PDF, MD, TXT, HTML | — |
+| Lua | Lua source | `.lua` | `text/x-lua` | PDF, MD, TXT, HTML | — |
+| SQL | SQL script | `.sql` | `application/sql` | PDF, MD, TXT, HTML | — |
+| XML | XML document | `.xml` | `application/xml` | PDF, MD, TXT, HTML | — |
+| CSS | CSS stylesheet | `.css` | `text/css` | PDF, MD, TXT, HTML | — |
 
 ## Routes
 
@@ -322,6 +348,27 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | ODS → PDF | libreoffice | soffice |
 | CSV → PDF | libreoffice | soffice |
 | TSV → PDF | libreoffice | soffice |
+| Python → PDF | text | pandoc, soffice |
+| JavaScript → PDF | text | pandoc, soffice |
+| TypeScript → PDF | text | pandoc, soffice |
+| JSON → PDF | text | pandoc, soffice |
+| YAML → PDF | text | pandoc, soffice |
+| TOML → PDF | text | pandoc, soffice |
+| INI → PDF | text | pandoc, soffice |
+| Shell → PDF | text | pandoc, soffice |
+| C → PDF | text | pandoc, soffice |
+| C++ → PDF | text | pandoc, soffice |
+| C# → PDF | text | pandoc, soffice |
+| Java → PDF | text | pandoc, soffice |
+| Kotlin → PDF | text | pandoc, soffice |
+| Go → PDF | text | pandoc, soffice |
+| Rust → PDF | text | pandoc, soffice |
+| PHP → PDF | text | pandoc, soffice |
+| Ruby → PDF | text | pandoc, soffice |
+| Lua → PDF | text | pandoc, soffice |
+| SQL → PDF | text | pandoc, soffice |
+| XML → PDF | text | pandoc, soffice |
+| CSS → PDF | text | pandoc, soffice |
 | PDF → DOCX | pdf | pypdf, pymupdf, pymupdf4llm, pandoc |
 | DOC → DOCX | libreoffice | soffice |
 | ODT → DOCX | libreoffice | soffice |
@@ -343,8 +390,38 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | DOC → MD | pandoc | pandoc, soffice |
 | ODT → MD | pandoc | pandoc |
 | RTF → MD | pandoc | pandoc, soffice |
+| TXT → MD | text | — |
 | EPUB → MD | pandoc | pandoc |
 | HTML → MD | pandoc | pandoc |
+| PPTX → MD | text | — |
+| PPT → MD | text | soffice |
+| ODP → MD | text | — |
+| XLSX → MD | text | soffice |
+| XLS → MD | text | soffice |
+| ODS → MD | text | soffice |
+| CSV → MD | text | — |
+| TSV → MD | text | — |
+| Python → MD | text | — |
+| JavaScript → MD | text | — |
+| TypeScript → MD | text | — |
+| JSON → MD | text | — |
+| YAML → MD | text | — |
+| TOML → MD | text | — |
+| INI → MD | text | — |
+| Shell → MD | text | — |
+| C → MD | text | — |
+| C++ → MD | text | — |
+| C# → MD | text | — |
+| Java → MD | text | — |
+| Kotlin → MD | text | — |
+| Go → MD | text | — |
+| Rust → MD | text | — |
+| PHP → MD | text | — |
+| Ruby → MD | text | — |
+| Lua → MD | text | — |
+| SQL → MD | text | — |
+| XML → MD | text | — |
+| CSS → MD | text | — |
 | PDF → TXT | pdf | pypdf, pymupdf |
 | DOCX → TXT | libreoffice | soffice |
 | DOC → TXT | libreoffice | soffice |
@@ -353,21 +430,74 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | MD → TXT | pandoc | pandoc |
 | EPUB → TXT | pandoc | pandoc |
 | HTML → TXT | pandoc | pandoc |
+| PPTX → TXT | text | — |
+| PPT → TXT | text | soffice |
+| ODP → TXT | text | — |
 | SRT → TXT | subtitles | pysubs2 |
 | VTT → TXT | subtitles | pysubs2 |
+| Python → TXT | text | — |
+| JavaScript → TXT | text | — |
+| TypeScript → TXT | text | — |
+| JSON → TXT | text | — |
+| YAML → TXT | text | — |
+| TOML → TXT | text | — |
+| INI → TXT | text | — |
+| Shell → TXT | text | — |
+| C → TXT | text | — |
+| C++ → TXT | text | — |
+| C# → TXT | text | — |
+| Java → TXT | text | — |
+| Kotlin → TXT | text | — |
+| Go → TXT | text | — |
+| Rust → TXT | text | — |
+| PHP → TXT | text | — |
+| Ruby → TXT | text | — |
+| Lua → TXT | text | — |
+| SQL → TXT | text | — |
+| XML → TXT | text | — |
+| CSS → TXT | text | — |
 | PDF → EPUB | pdf | pypdf, pymupdf, pymupdf4llm, pandoc |
 | DOCX → EPUB | pandoc | pandoc |
 | DOC → EPUB | pandoc | pandoc, soffice |
 | ODT → EPUB | pandoc | pandoc |
 | RTF → EPUB | pandoc | pandoc, soffice |
 | MD → EPUB | pandoc | pandoc |
+| TXT → EPUB | text | pandoc |
 | HTML → EPUB | pandoc | pandoc |
+| PDF → HTML | pdf | pypdf, pymupdf, pymupdf4llm, pandoc |
 | DOCX → HTML | pandoc | pandoc |
 | DOC → HTML | pandoc | pandoc, soffice |
 | ODT → HTML | pandoc | pandoc |
 | RTF → HTML | pandoc | pandoc, soffice |
 | MD → HTML | pandoc | pandoc |
+| TXT → HTML | text | pandoc |
 | EPUB → HTML | pandoc | pandoc |
+| XLSX → HTML | text | soffice, pandoc |
+| XLS → HTML | text | soffice, pandoc |
+| ODS → HTML | text | soffice, pandoc |
+| CSV → HTML | text | pandoc |
+| TSV → HTML | text | pandoc |
+| Python → HTML | text | pandoc |
+| JavaScript → HTML | text | pandoc |
+| TypeScript → HTML | text | pandoc |
+| JSON → HTML | text | pandoc |
+| YAML → HTML | text | pandoc |
+| TOML → HTML | text | pandoc |
+| INI → HTML | text | pandoc |
+| Shell → HTML | text | pandoc |
+| C → HTML | text | pandoc |
+| C++ → HTML | text | pandoc |
+| C# → HTML | text | pandoc |
+| Java → HTML | text | pandoc |
+| Kotlin → HTML | text | pandoc |
+| Go → HTML | text | pandoc |
+| Rust → HTML | text | pandoc |
+| PHP → HTML | text | pandoc |
+| Ruby → HTML | text | pandoc |
+| Lua → HTML | text | pandoc |
+| SQL → HTML | text | pandoc |
+| XML → HTML | text | pandoc |
+| CSS → HTML | text | pandoc |
 | PDF → PPTX | pdf | pypdf, pymupdf, soffice |
 | PPT → PPTX | libreoffice | soffice |
 | ODP → PPTX | libreoffice | soffice |
@@ -409,6 +539,32 @@ by extension and checked against the file content (`src/quince/core/filetype.py`
 | TAR.GZ → 7Z | archive | 7z |
 | RAR → 7Z | archive | unrar, 7z |
 
+## Left out on purpose
+
+Conversions the backends could do (directly or chained) that are not offered, with
+the reason. `scripts/audit_routes.py` checks that every other one is a route.
+
+| From | To | Why |
+|------|----|-----|
+| JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, PDF, all Document, all Slides, all Spreadsheet, all Subtitle, all Archive, all Code | all Audio, all Video | Only audio, video and animated GIFs hold sound or moving pictures; a document that reaches a GIF through its page images is no video. |
+| all Audio | GIF, all Video | A video needs a picture; Audio to video is a Phase 14 editor. |
+| all Audio, all Video | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, PDF, all Document, all Slides, all Spreadsheet, all Subtitle, all Archive, all Code | Audio and video hold no document text; pictures from a video are the animated GIF (a route) and snapshots (a Phase 14 editor). |
+| all Video | FLAC, OGG, Opus, AIFF, WMA | User decision (2026-11-04): a video's sound track as MP3, M4A or WAV only. |
+| GIF | all Audio, AVI, WMV | An animated GIF becomes a modern video (MP4, MOV, MKV, WebM); it has no sound. |
+| all Image | all Document, all Slides, all Spreadsheet, all Subtitle, all Code | An image holds no text; reading text from pictures (OCR) is not a format conversion. |
+| MD, TXT, EPUB, HTML, all Spreadsheet, all Subtitle, all Code | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF | Page images are offered for files with a fixed page layout (office documents, slides, PDF). Text, Markdown, HTML, EPUB, sheets and code reflow, so their pages would be an accident of the paper size; convert to PDF instead. |
+| PDF, DOCX, DOC, ODT, RTF, all Slides | WebP, HEIC, TIFF, AVIF, BMP, GIF | Page images come as PNG (sharp text) or JPG (small); other image formats can be made from those. |
+| PDF, all Document, all Slides, all Spreadsheet, all Subtitle, all Archive, all Code | DOC, RTF, PPT, XLS | DOC, RTF, PPT and XLS are read but not written: the 1997–2007 formats lose features, and DOCX/ODT, PPTX/ODP and XLSX/ODS open everywhere. |
+| PDF | ODP, ODS, CSV, TSV | PDF → slides and sheets: PPTX (page pictures) and XLSX (ruled tables) are offered; the OpenDocument and CSV twins add nothing. |
+| all Document, all Spreadsheet, all Subtitle, all Code | all Slides | Text, documents, sheets and code have no slide layout; making slides from them is authoring, not conversion. |
+| all Document, all Slides, all Subtitle, all Code | all Spreadsheet | Only tables become sheets; documents, slides and code are not tabular. |
+| all Slides, all Spreadsheet | DOCX, ODT, EPUB | Slides and sheets → word-processor documents and e-books: PDF keeps the layout, Markdown and TXT (slides) or CSV (sheets) the content. |
+| all Slides | HTML | LibreOffice writes slides as one HTML page per slide plus pictures; the slide text is offered as Markdown and TXT, the layout as PDF. |
+| all Spreadsheet | TXT | CSV and TSV are a sheet's plain text; Markdown gives readable tables. |
+| all Subtitle | DOCX, DOC, ODT, RTF, MD, EPUB, HTML | Subtitles → documents: the spoken text is offered as TXT; timings make no document. |
+| all Subtitle | PDF | Subtitles → PDF: the spoken text is offered as TXT. |
+| all Code | DOCX, ODT, EPUB | Source code as a word-processor document or e-book is rarely useful; HTML and PDF (highlighted) cover reading and printing. |
+
 ## Limitations (best effort)
 
 **PDF → Markdown** (pymupdf4llm 0.3.4, cleaned up by Quince):
@@ -433,6 +589,12 @@ description. Lists use pandoc 2.9's indentation (`  - item`, `1.  item`), which 
 
 **Spreadsheets:** CSV/TSV → XLSX/ODS reads numbers as numbers (`007` becomes `7`), like any
 spreadsheet program; CSV ⇄ TSV keeps every value as it is.
+
+**Plain text → Markdown** keeps every line break (a hard break) and escapes what Markdown
+would read as markup; leading spaces are dropped. **Sheets → Markdown/HTML**: the first row
+is the header, values as shown, one table per sheet. **Slides → Markdown/TXT**: titles,
+points, tables and speaker notes; pictures and charts are left out. **Source code → HTML/PDF**
+is highlighted by pandoc (TOML is not highlighted by pandoc 2.9).
 
 **Archives:** symbolic links are kept, set-uid bits and device files are not; ZIP stores
 times before 1980 as 1980-01-01. Password-protected archives are refused.

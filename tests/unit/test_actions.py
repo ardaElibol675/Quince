@@ -90,6 +90,7 @@ def test_actions_wheel_contents_and_order(items):
             "action.move",
             "action.copy_path",
             "action.show_in_files",
+            "action.create_archive",
             "action.open_with",
             "action.open_in_terminal",
             "action.float",

@@ -25,7 +25,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 from quince.backends import files, process
-from quince.core.jobs import JobContext, JobError
+from quince.core.jobs import JobContext, JobError, remove_tree
 from quince.core.routes import Route
 
 TIMEOUT_S = 3600
@@ -239,3 +239,89 @@ def convert(ctx: JobContext, src: Path, out: Path, route: Route) -> None:
         check_tree(root)
         ctx.progress(0.5, f"Packing {out.name.split('-', 2)[-1]}")
         pack(ctx, root, route.target, out)
+
+
+# --- tools: Extract archive, Create archive ------------------------------------------------
+
+
+def extract(ctx: JobContext, src: Path, format_id: str) -> None:
+    """Unpack ``src`` next to it, checked like a conversion.
+
+    An archive holding a single folder or file puts that item next to the archive; anything
+    else goes into a folder named after the archive (``photos.zip`` → ``photos/``).
+    """
+    folder = ctx.new_output(src, extension="", directory=True)
+    ctx.progress(None, f"Unpacking {src.name}")
+    UNPACK[format_id](ctx, src, folder)
+    check_tree(folder)
+    names = os.listdir(folder)
+    if not names:
+        raise JobError("The archive is empty")
+    if len(names) == 1:
+        # Move the item out, give up the folder (and its name), then claim the item's name.
+        aside = folder.with_name(folder.name + "-single")
+        os.rename(folder / names[0], aside)
+        try:
+            ctx.discard_output(folder)
+            temp = ctx.new_output(src.parent / names[0], target_dir=folder.parent)
+            os.rename(aside, temp)
+        finally:
+            if os.path.lexists(aside):
+                remove_tree(aside)
+
+
+def _check_names(paths: list[Path]) -> None:
+    seen: set[str] = set()
+    for path in paths:
+        if path.name in seen:
+            raise JobError(f"Two items are named {path.name}; an archive needs unique names")
+        seen.add(path.name)
+
+
+def _zip_items(ctx: JobContext, paths: list[Path], out: Path) -> None:
+    with zipfile.ZipFile(
+        out, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False
+    ) as archive:
+        for n, item in enumerate(paths):
+            ctx.progress(n / len(paths), f"Adding {item.name}")
+            entries = [(item, item.name)]
+            if item.is_dir() and not item.is_symlink():
+                for dirpath, dirnames, filenames in os.walk(item):
+                    dirnames.sort()
+                    for name in sorted(dirnames) + sorted(filenames):
+                        path = Path(dirpath) / name
+                        entries.append((path, f"{item.name}/{path.relative_to(item).as_posix()}"))
+            for path, arcname in entries:
+                ctx.check()
+                if path.is_symlink():
+                    info = zipfile.ZipInfo(arcname)
+                    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+                    archive.writestr(info, os.readlink(path))
+                elif path.is_dir():
+                    archive.write(path, arcname + "/")
+                elif path.is_file():
+                    archive.write(path, arcname)
+                else:
+                    raise JobError(f"{path.name} is not a regular file and cannot be archived")
+
+
+def pack_items(ctx: JobContext, paths: list[Path], target: str, out: Path) -> None:
+    """Pack files and folders (each stored under its own name) into ``out``."""
+    _check_names(paths)
+    if target == "zip":
+        _zip_items(ctx, paths, out)
+    elif target in ("tar", "targz"):
+        with tarfile.open(out, "w:gz" if target == "targz" else "w") as archive:
+            for n, item in enumerate(paths):
+                ctx.check()
+                ctx.progress(n / len(paths), f"Adding {item.name}")
+                archive.add(item, arcname=item.name)
+    elif target == "7z":
+        ctx.progress(None, "Packing")
+        process.run(
+            ["7z", "a", "-t7z", "-bd", "-snl", str(out.resolve()), "--",
+             *(str(p) for p in paths)],
+            ctx, timeout_s=TIMEOUT_S,
+        )  # fmt: skip
+    else:
+        raise JobError(f"Cannot write {target} archives")

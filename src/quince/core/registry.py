@@ -154,8 +154,13 @@ class Registry:
                     reason = available.reason((*op.requires, *route.all_requires))
                     if reason:
                         hidden.append(Unavailable(op.id, str(route), reason))
-            elif reason := available.reason(op.requirements()):
+            elif reason := available.reason(op.requires):
                 hidden.append(Unavailable(op.id, op.label, reason))
+            else:
+                for format_id, needs in op.requires_by_format.items():
+                    if reason := available.reason(needs):
+                        label = f"{op.label} ({formats.get(format_id).label})"
+                        hidden.append(Unavailable(op.id, label, reason))
         return hidden
 
 

@@ -8,15 +8,22 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import TypeVar
 
-from PySide6.QtCore import QStandardPaths, Qt, QUrl
+from PySide6.QtCore import QEventLoop, QObject, QStandardPaths, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QCursor, QGuiApplication, QIcon
-from PySide6.QtWidgets import QDialog, QFileDialog, QMenu, QSplitter, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMenu, QSplitter, QWidget
 
-from quince.core.operations import Choice
+from quince.core import forms
+from quince.core.forms import Form, Values
+from quince.core.operations import Choice, Report
 from quince.integrations.files import show_in_files
+from quince.ui.dialogs.options import FormDialog
+from quince.ui.dialogs.order import OrderDialog
+from quince.ui.dialogs.report import ReportDialog
 from quince.ui.feedback.toast import Toast
 
 log = logging.getLogger(__name__)
@@ -25,6 +32,8 @@ ERROR_TOAST_MS = 7000
 DIALOG_SIZE = (860, 540)
 SIDEBAR_WIDTH = 210
 _ICON_SUFFIXES = (".png", ".svg", ".xpm")
+COMPUTE_MESSAGE_MS = 600  # show the "working" message only when it takes longer
+T = TypeVar("T")
 
 
 def icon_for(name: str) -> QIcon:
@@ -108,12 +117,20 @@ class QtHost:
         show_files: Callable[[Sequence[Path]], None] = show_in_files,
         run_dialog: Callable[[QFileDialog], Path | None] | None = None,
         run_menu: Callable[[QMenu], str | None] | None = None,
+        run_form: Callable[[FormDialog], Values | None] | None = None,
+        run_order: Callable[[OrderDialog], list[Path] | None] | None = None,
+        run_report: Callable[[ReportDialog], str | None] | None = None,
+        options_file: Path | None = None,
     ) -> None:
         self._toast = toast
         self._shelf = shelf  # created on first use
         self._show_files = show_files
         self._run_dialog = run_dialog or _exec_dialog
         self._run_menu = run_menu or _exec_menu
+        self._run_form = run_form or _exec_form
+        self._run_order = run_order or _exec_order
+        self._run_report = run_report or _exec_report
+        self._options_file = options_file
 
     def choose_folder(
         self, title: str, *, accept_label: str, start: Path | None, recent: Sequence[Path]
@@ -153,6 +170,78 @@ class QtHost:
     def float_items(self, paths: Sequence[Path]) -> None:
         self._shelf().add(list(paths))
 
+    def ask_options(self, form: Form) -> Values | None:
+        dialog = FormDialog(form, forms.initial_values(form, self._options_file))
+        try:
+            values = self._run_form(dialog)
+        finally:
+            dialog.deleteLater()
+        if values is not None:
+            forms.remember(form, values, self._options_file)
+        return values
+
+    def ask_order(
+        self, title: str, paths: Sequence[Path], *, accept_label: str
+    ) -> list[Path] | None:
+        dialog = OrderDialog(title, list(paths), accept_label=accept_label)
+        try:
+            return self._run_order(dialog)
+        finally:
+            dialog.deleteLater()
+
+    def compute(self, message: str, work: Callable[[], T]) -> T:
+        return run_off_gui_thread(work, on_slow=lambda: self.notify(message))
+
+    def show_report(self, report: Report) -> str | None:
+        dialog = ReportDialog(report)
+        try:
+            return self._run_report(dialog)
+        finally:
+            dialog.deleteLater()
+
+
+class _Done(QObject):
+    finished = Signal()
+
+
+def run_off_gui_thread(work: Callable[[], T], *, on_slow: Callable[[], None] | None = None) -> T:
+    """Run ``work`` on a thread and wait in a local event loop (the UI keeps painting).
+
+    Returns its result or raises its exception. ``on_slow`` runs if it takes a while.
+    """
+    result: list = []
+    error: list[BaseException] = []
+    done = _Done()
+    loop = QEventLoop()
+    done.finished.connect(loop.quit, Qt.ConnectionType.QueuedConnection)
+
+    def target() -> None:
+        try:
+            result.append(work())
+        except BaseException as exc:  # handed to the caller
+            error.append(exc)
+        finally:
+            done.finished.emit()
+
+    timer = QTimer()
+    timer.setSingleShot(True)
+    if on_slow is not None:
+        timer.timeout.connect(on_slow)
+    thread = threading.Thread(target=target, name="quince-compute", daemon=True)
+    QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+    try:
+        thread.start()
+        timer.start(COMPUTE_MESSAGE_MS)
+        if thread.is_alive():
+            loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        thread.join()
+    finally:
+        timer.stop()
+        QApplication.restoreOverrideCursor()
+    if error:
+        raise error[0]
+    return result[0]
+
 
 def _exec_dialog(dialog: QFileDialog) -> Path | None:
     dialog.show()
@@ -161,6 +250,30 @@ def _exec_dialog(dialog: QFileDialog) -> Path | None:
     if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selectedFiles():
         return None
     return Path(dialog.selectedFiles()[0])
+
+
+def _present(dialog: QDialog) -> int:
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+    return dialog.exec()
+
+
+def _exec_form(dialog: FormDialog) -> Values | None:
+    if _present(dialog) != QDialog.DialogCode.Accepted:
+        return None
+    return dialog.values()
+
+
+def _exec_order(dialog: OrderDialog) -> list[Path] | None:
+    if _present(dialog) != QDialog.DialogCode.Accepted:
+        return None
+    return dialog.paths()
+
+
+def _exec_report(dialog: ReportDialog) -> str | None:
+    _present(dialog)
+    return dialog.chosen
 
 
 def _exec_menu(menu: QMenu) -> str | None:

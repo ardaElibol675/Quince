@@ -708,7 +708,7 @@ the only guard where namespaces are unavailable.
 
 | Module | Routes | Backend |
 |--------|--------|---------|
-| `convert/pdf.py` | PDF → MD, TXT, PNG, JPG, DOCX, ODT, EPUB, PPTX, XLSX | `pdf` (`backends/pdf.py`) |
+| `convert/pdf.py` | PDF → MD, TXT, PNG, JPG, DOCX, ODT, EPUB, HTML, PPTX, XLSX | `pdf` (`backends/pdf.py`) |
 | `convert/subtitle.py` | SRT ⇄ VTT, both → TXT | `subtitles` (`backends/subtitles.py`) |
 | `convert/archive.py` | ZIP, TAR, TAR.GZ, 7Z into each other; RAR → all four | `archive` (`backends/archive.py`) |
 
@@ -876,3 +876,152 @@ files system-wide):
 `QSystemTrayIcon` with Open Quince, Library and Quit Quince. Qt 6 shows it as a
 StatusNotifierItem, which Ubuntu's AppIndicator extension (on by default) displays. Without a
 tray the service logs it and runs on; the app menu entry covers the same commands.
+
+## Direct tools (Phase 12)
+
+### Tools on the wheels
+
+| Wheel item | Module | Accepts | How |
+|------------|--------|---------|-----|
+| Compress | `tools/compress.py` → `backends/compress.py` | JPG, PNG, WebP, HEIC, AVIF, TIFF, GIF; MP3, M4A, OGG, Opus, WMA; videos; PDF | options dialog, then a job |
+| Metadata | `tools/metadata.py` → `backends/metadata.py` | the images above, audio, video, PDF | report window; "Save copy without metadata" → job |
+| Remove Audio | `tools/remove_audio.py` → `backends/mediatools.py` | videos | job (stream copy) |
+| Normalize | `tools/normalize_audio.py` → `backends/mediatools.py` | audio, videos | job (two-pass loudnorm) |
+| Extract | `tools/extract_archive.py` → `backends/archive.py` | archives (7Z needs `7z`, RAR `unrar`) | job |
+| Join | `tools/join_videos.py` → `backends/mediatools.py` | ≥ 2 videos | order dialog, then a job |
+| Merge PDFs | `tools/merge_pdfs.py` → `backends/pdftools.py` | ≥ 2 PDFs | order dialog, then a job |
+| To One PDF | `tools/images_to_pdf.py` → `backends/pdftools.py` | ≥ 2 raster images | order dialog, then a job |
+| Read QR | `tools/read_qr.py` → `backends/qr.py` | raster images (needs `zbarimg`) | report window, nothing written |
+| Archive (Actions wheel) | `actions/create_archive.py` → `backends/archive.py` | anything, folders too | options dialog, then a job |
+
+Create archive is an action so that folders and mixed selections, which only get the Actions
+wheel (Hard Rule 9), can be archived (Decision Log 2026-11-05).
+
+### Dialogs through `Host`
+
+`Operation.start` steps use four new `Host` methods (`core/operations.py`); `QtHost`
+implements them with `ui/dialogs/`:
+
+- `ask_options(form)`: a `core/forms.Form` (fields `Choice`, `Number`, `Text`; `shown_when`
+  hides fields that do not apply) as a small dialog, prefilled with the values used last time
+  for that form id. They are state in `~/.local/state/quince/tool-options.json`; `remember`
+  limits which fields are kept (an archive name is not). Enter accepts, Esc cancels.
+- `ask_order(title, paths)`: the files in natural name order (2 before 10); drag, Alt+↑/↓,
+  "Sort by Name", "Leave Out" (at least two stay).
+- `compute(message, work)`: runs `work` on a thread while a local event loop keeps the UI
+  painting (user input is held back); the message shows only if it takes over 0.6 s.
+  Metadata and QR reading use it, so a slow ffprobe never freezes the GUI thread.
+- `show_report(report)`: sections of (name, value) rows, Ctrl+C / Copy All, extra buttons
+  whose key is returned.
+
+### Dependencies per format
+
+`Operation.requires_by_format` (e.g. `{"pdf": ("gs",)}`) adds dependencies only for those
+source formats: without Ghostscript, Compress is hidden for PDFs but offered for images.
+`Registry.unavailable()` lists such gaps as "Compress (PDF)".
+
+### Compress (`backends/compress.py`)
+
+- A goal is a quality level (high / medium / low), a percentage of the original, or a size per
+  file. A result that is not smaller than the original is never kept ("Already well
+  compressed"); an unreachable size fails with the smallest size Quince could make.
+- Images: settings are tried from the best down a ladder (JPEG/WebP/HEIC/AVIF quality 92 → 25,
+  then 85 % → 20 % of the pixels; PNG lossless, then 256 → 16 colors; GIF colors; TIFF
+  deflate, then JPEG-in-TIFF), with a binary search over the ladder (about five encodes).
+  Multi-frame images are refused for now. EXIF, ICC and DPI are kept as in conversions.
+- PDF: Ghostscript `pdfwrite` with `/printer`, `/ebook`, `/screen`, then 50 dpi images.
+- Audio: the same codec at a lower bit rate; a size goal computes the bit rate from the
+  duration and retries (at most three encodes) when the container overhead overshoots.
+- Video: H.264 CRF 23/27/31 (VP9 33/38/44 for WebM); a size goal encodes two passes at the
+  computed bit rate (audio 64-128 kbps), scaled to at most 480/720/1080 lines when the bit rate
+  is low. Both passes use `-vsync vfr`: otherwise the null muxer of pass 1 and the MP4 muxer of
+  pass 2 keep different frames and x264 fails with "Incomplete MB-tree stats file" (seen with
+  an AVI source). AVI and WMV are written as MP4.
+
+### Metadata (`backends/metadata.py`)
+
+- Read: EXIF (names from Pillow, GPS as decimal degrees), XMP, comments, PNG text, IPTC
+  presence; ffprobe container, stream and chapter tags; PDF document information and XMP. The
+  window separates what the file is (format, size) from its metadata.
+- Strip without re-encoding: JPEG segments are copied except APP1 (EXIF/XMP), APP13 (IPTC),
+  comments and APPn other than JFIF, ICC and Adobe; a lone EXIF orientation is written back so
+  the photo does not turn; data after the end-of-image marker (MPF extra images, which carry
+  their own EXIF) is dropped. PNG drops `tEXt`, `zTXt`, `iTXt`, `eXIf`, `tIME`; WebP drops the
+  `EXIF` and `XMP ` chunks and clears their flags. TIFF/GIF are saved again (lossless),
+  HEIC/AVIF re-encoded at quality 95 (noted). Media: `-map_metadata -1 -map_metadata:s -1
+  -map_chapters -1 -c copy` with bit-exact flags. PDF: `set_metadata({})` and
+  `del_xml_metadata()`.
+
+### Audio and video tools (`backends/mediatools.py`)
+
+- Normalize: one `loudnorm` measuring pass per audio track, then one pass with the measured
+  values (`linear=true`) to -16 LUFS / -1.5 dBTP / LRA 11, every track with its own filter, at
+  the original sample rate, encoded with the format's conversion preset (lossless stays
+  lossless); a silent track is an error.
+- Join: the concat demuxer with stream copy when container, codecs, size, frame rate and audio
+  layout match; otherwise one `filter_complex` that scales and pads every video to the first
+  one's size and frame rate, resamples sound to 48 kHz stereo and fills videos without sound
+  with `aevalsrc` silence, encoded as MP4 (H.264 CRF 20, AAC 192k).
+
+### Archives
+
+- Extract unpacks into a temporary output folder next to the archive with the conversion
+  checks; a single top-level item is moved out and takes its own name (the folder and its
+  reserved name are given up first, `JobContext.discard_output`).
+- Create archive stores each selected item under its own name (ZIP, TAR.GZ, 7Z with absolute
+  paths, `-snl`); two items with the same name are refused.
+
+### QR codes (`backends/qr.py`)
+
+Pillow decodes the image (any raster format), flattens it on white and writes a grayscale PNG
+for `zbarimg --quiet --xml`; the XML keeps multi-line text and base64 data. Exit status 4 is
+"nothing found". The test fixture `sample-qr.png` comes from a small QR encoder in
+`scripts/make_fixtures.py` (byte mode, level L, versions 1-5, mask 0); its Reed-Solomon and
+format-bit parts are unit tested against published reference values.
+
+## Route coverage, text and code (Phase 12)
+
+### The audit (`core/coverage.py`, `scripts/audit_routes.py`)
+
+Routes are a hand-written table, so the audit checks them against what the backends can do:
+
+- `CAPABILITIES`: per backend (Pillow, ffmpeg, LibreOffice Writer/Calc/Impress, pandoc,
+  PyMuPDF, pymupdf4llm, pysubs2, archives), the Quince formats it reads and writes in one step.
+- `candidates(routes)`: the transitive closure of those one-step conversions plus the routes
+  (`txt → docx → md` makes `txt → md` a candidate).
+- `EXCLUSIONS`: conversions left out on purpose, as `sources × targets` with a reason (whole
+  categories where possible). They are listed in `docs/FORMATS.md`.
+- `tests/unit/test_coverage.py` fails when a candidate is neither a route nor excluded, when an
+  exclusion covers a route, or when an exclusion covers nothing any more. A new format with
+  any route therefore forces a decision about everything it can reach.
+
+### Routes
+
+| Module | Routes | Backend |
+|--------|--------|---------|
+| `convert/code.py` | every code format → MD, TXT, HTML, PDF | `text` (`backends/text.py`) |
+| `convert/document.py` | TXT → MD, HTML, EPUB | `text` |
+| `convert/spreadsheet.py` | XLSX/XLS/ODS/CSV/TSV → MD, HTML | `text` |
+| `convert/slides.py` | PPTX/ODP/PPT → MD, TXT | `text` |
+
+Source code and configuration files are formats of their own (category `code`, `Format.syntax`
+is the fence/highlighter language), instead of falling back to TXT. A text extension is not
+believed for binary content (`filetype.detect`: an MPEG-TS `clip.ts` is not TypeScript).
+
+### The `text` backend
+
+Quince writes the Markdown itself (`backends/markdown.py`) because pandoc 2.9's GFM writer
+does not escape `|` in table cells: `escape_inline` / `escape_line` escape only what Markdown
+would read as markup (round-trip tested through pandoc), `pipe_table` writes GFM tables
+(`<br>` for line breaks in cells), `fence` picks a fence longer than any backtick run.
+HTML (`--self-contained`), EPUB and PDF are made from that Markdown with pandoc; PDF goes
+through DOCX and LibreOffice, since pandoc's ODT writer does not highlight code.
+
+- Plain text: paragraphs at blank lines, every line break kept as a backslash hard break.
+- Sheets: CSV/TSV are read in Python (encoding, separator); workbooks through LibreOffice's
+  CSV export (values as shown). LibreOffice writes every sheet at once, so the order comes from
+  `xl/workbook.xml` / `content.xml` (XLS is converted to XLSX first).
+- Slides (`backends/slidetext.py`): PPTX and ODP are read with `zipfile` + ElementTree: slide
+  order from `presentation.xml` and its relationships, title placeholders, body placeholders
+  and lists as bullets with their level, tables, speaker notes. PPT goes through PPTX.
+

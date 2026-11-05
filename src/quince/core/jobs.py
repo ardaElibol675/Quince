@@ -254,6 +254,12 @@ class JobContext:
         self.outputs.append(_Output(temp, final, directory))
         return temp
 
+    def discard_output(self, temp: Path) -> None:
+        """Give up an output from ``new_output`` (deleted, its name freed)."""
+        dropped = [out for out in self.outputs if out.temp == Path(temp)]
+        self.outputs = [out for out in self.outputs if out.temp != Path(temp)]
+        self._queue._discard(dropped)
+
     def add_result(self, path: Path) -> None:
         """Report an output the job already put at its final place (not a temporary one)."""
         self.results.append(Path(path))

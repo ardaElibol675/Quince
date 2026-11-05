@@ -293,27 +293,33 @@ def _pdf_page_data(page: Image.Image, lossless: bool) -> bytes:
     return buffer.getvalue()
 
 
+def add_pdf_pages(ctx: JobContext, doc, src: Path, im: Image.Image, source: str) -> list[str]:
+    """Add ``im`` (every page of a multi-page TIFF) to the PyMuPDF ``doc``; returns notes."""
+    notes: list[str] = []
+    multi_page = source == "tiff" and getattr(im, "n_frames", 1) > 1
+    if getattr(im, "n_frames", 1) > 1 and not multi_page:
+        notes.append(f"Only the first {_frames_word(source)} was kept")
+    pages = list(ImageSequence.Iterator(im)) if multi_page else [im]
+    for page_image in pages:
+        ctx.check()
+        upright = ImageOps.exif_transpose(page_image.copy())
+        orientation = page_image.getexif().get(EXIF_ORIENTATION, 1)
+        if source == "jpg" and len(pages) == 1 and orientation == 1:
+            data = src.read_bytes()  # embedded as it is: no second JPEG encoding
+        else:
+            data = _pdf_page_data(upright, source in LOSSLESS_SOURCES)
+        scale = 72.0 / _pdf_dpi(page_image)
+        page = doc.new_page(width=upright.width * scale, height=upright.height * scale)
+        page.insert_image(page.rect, stream=data)
+    return notes
+
+
 def _write_pdf(ctx: JobContext, src: Path, im: Image.Image, route: Route, out: Path) -> list[str]:
     import pymupdf
 
-    notes: list[str] = []
-    multi_page = route.source == "tiff" and getattr(im, "n_frames", 1) > 1
-    if getattr(im, "n_frames", 1) > 1 and not multi_page:
-        notes.append(f"Only the first {_frames_word(route.source)} was kept")
-    pages = list(ImageSequence.Iterator(im)) if multi_page else [im]
     doc = pymupdf.open()
     try:
-        for page_image in pages:
-            ctx.check()
-            upright = ImageOps.exif_transpose(page_image.copy())
-            orientation = page_image.getexif().get(EXIF_ORIENTATION, 1)
-            if route.source == "jpg" and len(pages) == 1 and orientation == 1:
-                data = src.read_bytes()  # embedded as it is: no second JPEG encoding
-            else:
-                data = _pdf_page_data(upright, route.source in LOSSLESS_SOURCES)
-            scale = 72.0 / _pdf_dpi(page_image)
-            page = doc.new_page(width=upright.width * scale, height=upright.height * scale)
-            page.insert_image(page.rect, stream=data)
+        notes = add_pdf_pages(ctx, doc, src, im, route.source)
         doc.save(str(out), garbage=3, deflate=True)
     except (RuntimeError, ValueError) as exc:
         raise JobError(f"Cannot write PDF: {exc}", str(exc)) from exc

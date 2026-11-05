@@ -282,7 +282,7 @@ def test_wheel_shows_registry_contents_switches_and_drop_with_shift_is_copy(sess
     assert contents == PNG_TARGETS
     session.tap("Shift_L", hold=0.6)  # too long: not a tap
     session.tap("Control_L")
-    session.wait_log("wheel switched to tools: empty (Nothing available)")
+    session.wait_log("wheel switched to tools: Compress, Metadata, To One PDF")
     session.tap("Shift_L")
     session.wait_log(f"wheel switched to convert: {PNG_TARGETS}")
 
@@ -444,8 +444,9 @@ def test_demo_jobs_from_the_wheel(session, images):
     session.start_source(images[0])  # the GTK source quits after one drag
     session.begin_drag()
     _, _, contents = session.open_wheel("Control_L", "tools")
-    assert contents == "Slow Demo, Fail Demo"
-    session.tap("Right")
+    assert contents.endswith("Slow Demo, Fail Demo")  # after the real tools
+    session.tap("End")
+    session.tap("Left")
     session.tap("Return")
     session.button(1, False)
     session.wait_log("job 1 succeeded", timeout=20)

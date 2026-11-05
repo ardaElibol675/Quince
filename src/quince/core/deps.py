@@ -118,6 +118,18 @@ DEPENDENCIES: tuple[Dependency, ...] = (
     Dependency("7z", DepKind.BINARY, "7z", False, "7z archives", apt="p7zip-full", version_args=()),
     Dependency("unrar", DepKind.BINARY, "unrar", False, "RAR input", apt="unrar", version_args=()),
     # Tesseract language data, used by PyMuPDF's built-in OCR for scanned PDF pages
+    Dependency(
+        "gs", DepKind.BINARY, "gs", False, "PDF compression (Ghostscript)", apt="ghostscript"
+    ),
+    Dependency(
+        "zbarimg",
+        DepKind.BINARY,
+        "zbarimg",
+        False,
+        "reading QR codes and barcodes",
+        apt="zbar-tools",
+        version_args=("--version",),
+    ),
     # nautilus-python loads Quince's "Open in Quince" menu extension into Nautilus
     Dependency(
         "nautilus-python",

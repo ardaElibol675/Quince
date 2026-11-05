@@ -98,8 +98,8 @@ def test_infilters(tmp_path):
 
 
 def test_sheet_names_from_libreoffice_files():
-    assert office._sheet_name(Path("input-Sheet 1.csv"), "input") == "Sheet 1"
-    assert office._sheet_name(Path("input-İkinci-Sayfa.csv"), "input") == "İkinci-Sayfa"
+    assert office.sheet_name(Path("input-Sheet 1.csv"), "input") == "Sheet 1"
+    assert office.sheet_name(Path("input-İkinci-Sayfa.csv"), "input") == "İkinci-Sayfa"
 
 
 def test_libreoffice_cannot_write_everything():

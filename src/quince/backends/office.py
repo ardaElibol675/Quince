@@ -203,7 +203,7 @@ def render_pages(
                 pix.save(str(target), output="png")
 
 
-def _sheet_name(produced: Path, stem: str) -> str:
+def sheet_name(produced: Path, stem: str) -> str:
     """``input-Sheet 1.csv`` → ``Sheet 1``."""
     name = produced.stem
     return name[len(stem) + 1 :] if name.startswith(f"{stem}-") else name
@@ -216,7 +216,7 @@ def _delimited(ctx: JobContext, files: list[Path], source: Path, target: str, ou
         return
     folder = outputs.folder()
     for produced in files:
-        name = f"{source.stem}-{_sheet_name(produced, 'input')}.{ext}"
+        name = f"{source.stem}-{sheet_name(produced, 'input')}.{ext}"
         shutil.move(str(produced), folder / name.replace("/", "_"))
     ctx.note(f"{len(files)} sheets, one file each")
 

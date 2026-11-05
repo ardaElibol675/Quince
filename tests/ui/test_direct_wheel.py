@@ -147,3 +147,6 @@ def test_drag_controller_and_direct_session_share_one_wheel(qtbot, files):
     assert ctl.in_drag_session
     ctl.handle(drag.DragEnded(120))
     qtbot.waitUntil(lambda: not ctl.in_drag_session, timeout=1000)
+    # let the controller's release timer run while the wheel still exists
+    qtbot.waitUntil(lambda: not wheel.isVisible(), timeout=1000)
+    qtbot.wait(20)

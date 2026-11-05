@@ -15,10 +15,13 @@ Every external dependency of Quince, why it is needed, and what this machine can
 | `libxcb-cursor0` | Qt 6 `xcb` platform plugin (X11)                       | yes      | 0.1.1           |
 | `ffmpeg`         | `ffmpeg` / `ffprobe`: audio and video conversion, tools | yes      | 4.4.2           |
 | `libreoffice`    | `soffice`: documents, slides, spreadsheets             | no       | 7.3.7.2         |
-| `pandoc`         | Markdown and EPUB routes                               | no       | 2.9.2.1         |
+| `pandoc`         | Markdown, HTML and EPUB routes; code highlighting      | no       | 2.9.2.1         |
 | `librsvg2-bin`   | `rsvg-convert`: SVG input                              | no       | 2.52.5          |
 | `p7zip-full`     | `7z`: 7z archives (create and extract)                 | no       | 16.02           |
 | `unrar`          | RAR input (multiverse, non-free)                       | no       | 6.1.5           |
+| `ghostscript`    | `gs`: PDF compression                                  | no       | 9.55.0          |
+| `zbar-tools`     | `zbarimg`: reading QR codes and barcodes               | no       | 0.23.92         |
+| `python3-nautilus` | "Open in Quince" in Nautilus                         | no       | 1.2.3           |
 
 Install everything on Ubuntu 22.04:
 
@@ -57,6 +60,15 @@ Python package was added.
 
 ```bash
 sudo apt install python3-nautilus && nautilus -q
+```
+
+**Phase 12 (optional):** `ghostscript` (`gs`, installed on Ubuntu desktops) compresses PDFs;
+without it Compress is hidden for PDFs only. `zbar-tools` (`zbarimg`) reads QR codes and
+barcodes; without it Read QR is hidden. Both are listed by `quince doctor` (`gs`, `zbarimg`).
+No Python package was added.
+
+```bash
+sudo apt install zbar-tools
 ```
 
 Development only (optional, both installed on the dev machine): `xvfb` runs the nested-X

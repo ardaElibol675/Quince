@@ -32,6 +32,7 @@ BACKEND_MODULES: Mapping[str, str] = MappingProxyType(
         "pdf": "quince.backends.pdf",
         "subtitles": "quince.backends.subtitles",
         "archive": "quince.backends.archive",
+        "text": "quince.backends.text",
     }
 )
 

@@ -15,13 +15,14 @@ An operation does its work in one of three ways:
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from quince.core.formats import Category
+from quince.core.forms import Form, Values
 from quince.core.routes import Route
 from quince.core.selection import Selection
 
@@ -110,6 +111,33 @@ class JobRequest:
     title: str = ""
 
 
+@dataclass(frozen=True)
+class ReportSection:
+    """A titled list of (name, value) rows, e.g. the metadata of one file."""
+
+    title: str
+    rows: tuple[tuple[str, str], ...] = ()
+    empty: str = "Nothing found"
+
+
+@dataclass(frozen=True)
+class Report:
+    """Information shown in a window (``Host.show_report``): metadata, decoded QR codes.
+
+    ``actions`` are buttons besides Close; the chosen one's key is returned. Every value can
+    be copied; ``copy_all`` is what "Copy All" puts on the clipboard (empty: no such button).
+    """
+
+    title: str
+    sections: tuple[ReportSection, ...]
+    actions: tuple[Choice, ...] = ()
+    copy_all: str = ""
+    note: str = ""
+
+
+T = TypeVar("T")
+
+
 class Host(Protocol):
     """Desktop services for ``Operation.start``, provided by the UI on the GUI thread."""
 
@@ -142,6 +170,25 @@ class Host(Protocol):
         """Put ``paths`` on the Float shelf."""
         ...
 
+    def ask_options(self, form: Form) -> Values | None:
+        """Show ``form`` with the values used last time; the accepted values or None."""
+        ...
+
+    def ask_order(
+        self, title: str, paths: Sequence[Path], *, accept_label: str
+    ) -> list[Path] | None:
+        """Let the user put ``paths`` in order (shown in this order first); None to cancel."""
+        ...
+
+    def compute(self, message: str, work: Callable[[], T]) -> T:
+        """Run ``work`` off the GUI thread while the UI stays responsive; its result, or the
+        exception it raised."""
+        ...
+
+    def show_report(self, report: Report) -> str | None:
+        """Show ``report``; the key of the action button pressed, or None (closed)."""
+        ...
+
 
 @dataclass(frozen=True)
 class Operation:
@@ -166,6 +213,9 @@ class Operation:
     start: Callable[[Selection, Host], JobRequest | None] | None = None
     routes: tuple[Route, ...] = ()
     title: str = ""
+    # Extra dependencies for some source formats, e.g. {"pdf": ("gs",)}: a tool stays
+    # available for the other formats when one of them is missing.
+    requires_by_format: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.title:
@@ -191,8 +241,12 @@ class Operation:
         needed = list(self.requires)
         if selection is None:
             used = self.routes
+            format_ids = list(self.requires_by_format)
         else:
             used = tuple(r for r in map(self.route_for, selection.format_ids) if r)
+            format_ids = [f for f in selection.format_ids if f in self.requires_by_format]
         for route in used:
             needed += route.all_requires
+        for format_id in format_ids:
+            needed += self.requires_by_format[format_id]
         return tuple(dict.fromkeys(needed))

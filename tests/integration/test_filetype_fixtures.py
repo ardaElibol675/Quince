@@ -12,7 +12,7 @@ pytestmark = pytest.mark.integration
 GENERATED = Path(__file__).resolve().parent.parent / "fixtures" / "generated"
 FIXTURES = sorted(GENERATED.glob("sample*")) if GENERATED.is_dir() else []
 # Plain-text formats cannot be told apart by content; without an extension they are text.
-TEXT_ONLY = {"md", "csv", "tsv", "txt"}
+TEXT_ONLY = {"md", "csv", "tsv", "txt"} | {f.id for f in formats.in_category(formats.Category.CODE)}
 
 
 def _ids(paths):

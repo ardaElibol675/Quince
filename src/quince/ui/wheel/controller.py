@@ -153,7 +153,8 @@ class DragWheelController(QObject):
         log.info("drag ended")
         session = self._session
         grace = 0 if self._dropped else self._grace_ms
-        QTimer.singleShot(grace, self, lambda: self._release(session))
+        # The wheel is the timer's context: a deleted wheel cancels the release.
+        QTimer.singleShot(grace, self.wheel, lambda: self._release(session))
 
     def _release(self, session: int | None) -> None:
         if session == self._session and not self._dragging:
@@ -262,7 +263,7 @@ class DragWheelController(QObject):
             self._dropped = True
             if not self._dragging:  # the drop was handled after the drag had ended
                 session = self._session
-                QTimer.singleShot(0, self, lambda: self._release(session))
+                QTimer.singleShot(0, self.wheel, lambda: self._release(session))
         self.operation_chosen.emit(op, selection)
 
 

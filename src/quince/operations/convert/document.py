@@ -2,6 +2,8 @@
 
 LibreOffice (``quince.backends.office``) writes the office formats, PDF, plain text and page
 images; pandoc (``quince.backends.pandoc``) reads and writes Markdown, HTML and EPUB.
+Plain text becomes Markdown in Quince itself (``quince.backends.text``: line breaks kept,
+nothing read as markup); its HTML and EPUB are made from that Markdown.
 DOC and RTF reach pandoc through LibreOffice, and pandoc's PDF goes through LibreOffice, so
 those routes need both.
 """
@@ -27,4 +29,7 @@ ROUTES = (
     *(Route("html", t, "pandoc") for t in ("md", "docx", "odt", "epub", "txt")),
     *(Route("epub", t, "pandoc") for t in ("md", "docx", "odt", "html", "txt")),
     *(Route(s, "pdf", "pandoc", requires=LO) for s in ("md", "epub")),
+    # Plain text → Markdown (no dependency), HTML and EPUB
+    Route("txt", "md", "text"),
+    *(Route("txt", t, "text", requires=("pandoc",)) for t in ("html", "epub")),
 )

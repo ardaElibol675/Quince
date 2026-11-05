@@ -128,3 +128,28 @@ def test_corrupt_zip_keeps_extension(tmp_path):
     broken = tmp_path / "broken.docx"
     broken.write_bytes(b"PK\x03\x04" + b"\0" * 40)
     assert filetype.detect(broken).id == "docx"
+
+
+def test_source_code_has_formats_of_its_own(tmp_path):
+    for name, fmt in (("tool.py", "py"), ("app.tsx", "ts"), ("main.h", "c"), ("x.yml", "yaml")):
+        path = tmp_path / name
+        path.write_text("x = 1\n")
+        assert filetype.detect(path).id == fmt
+        assert formats.get(fmt).category is formats.Category.CODE
+        assert formats.get(fmt).syntax
+    notes = tmp_path / "notes.txt"
+    notes.write_text("x = 1\n")
+    assert filetype.detect(notes).id == "txt"
+
+
+def test_binary_content_is_not_a_text_format(tmp_path):
+    """An MPEG transport stream named .ts is no TypeScript; an empty .py still is Python."""
+    video = tmp_path / "clip.ts"
+    video.write_bytes(bytes([0x47, 0x40, 0x00, 0x10, 0x00, 0x00, 0xB0, 0x0D]) * 64)
+    assert filetype.detect(video) is None
+    empty = tmp_path / "empty.py"
+    empty.touch()
+    assert filetype.detect(empty).id == "py"
+    turkish = tmp_path / "eski.py"
+    turkish.write_bytes("# Türkçe açıklama\n".encode("cp1254"))
+    assert filetype.detect(turkish).id == "py"

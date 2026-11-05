@@ -610,7 +610,7 @@ def convert_into(ctx: JobContext, src: Path, route: Route, outputs) -> None:
         elif target in ("png", "jpg"):
             open_pdf(src).close()  # explains broken or locked files before rendering
             office.render_pages(ctx, src, src, target, outputs, dpi=PAGE_DPI)
-        elif target in ("docx", "odt", "epub"):
+        elif target in ("docx", "odt", "epub", "html"):
             md = _markdown_result(ctx, src, workdir)
             ctx.progress(0.95, "Writing the document")
             result = pandoc.run_pandoc(
