@@ -340,7 +340,8 @@ Xvfb: without the nudge, Enter dropped on no target; with it, on the wheel.
 
 - A `QLocalServer` named `quince-<uid>` (user-only access). `quince service` first sends
   `ping`; if a service answers, it prints "already running" and exits. `quince service --stop`
-  sends `quit`. A socket file left by a crashed service is removed when nobody answers.
+  sends `quit`. `quince service --restart` sends `quit`, waits until `ping` gets no answer
+  (up to 10 s), then runs `quince home`, which starts a fresh service and shows Home. A socket file left by a crashed service is removed when nobody answers.
 - `QUINCE_INSTANCE` overrides the name; the nested-X tests use it so they never talk to a
   service running in the real session.
 - Commands are one line per request. Phase 11 adds `open` for the CLI and the Nautilus menu.

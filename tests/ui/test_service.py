@@ -165,7 +165,14 @@ def test_ensure_service_starts_one_and_reports_failures(qtbot, tmp_path):
         assert app.send_command("ping", name) == "pong"
         assert app.ensure_service(name, command=["false"]) is False  # already running
     finally:
-        app.send_command("quit", name)
+        assert app.stop_service(name) is True
+    assert app.send_command("ping", name) is None
+    assert app.stop_service(name) is False  # nothing left to stop
+    # A restart can start a new one on the same name right away.
+    try:
+        assert app.ensure_service(name, command=[sys.executable, str(script)]) is True
+    finally:
+        app.stop_service(name)
     with pytest.raises(app.ServiceUnavailable):
         app.ensure_service(f"{name}-x", command=[sys.executable, "-c", "raise SystemExit(2)"])
 

@@ -1,7 +1,8 @@
 """The Quince background service: global drag watcher, wheel and single-instance socket.
 
 ``quince service`` runs it in the background. A second ``quince service`` finds the
-running one through a local socket and exits; ``quince service --stop`` asks it to quit.
+running one through a local socket and exits; ``quince service --stop`` asks it to quit,
+``quince service --restart`` stops it and opens Home, which starts a fresh one.
 Other ``quince`` commands talk to it over the same socket, one line per request:
 ``<command>[ <argument>]`` (``ping``, ``quit``, ``home``, ``library``, ``open <json>``).
 ``ensure_service`` starts the service first when none is running.
@@ -27,6 +28,7 @@ SERVER_NAME = os.environ.get("QUINCE_INSTANCE") or f"quince-{os.getuid()}"
 COMMAND_TIMEOUT_MS = 1000
 START_TIMEOUT_S = 15.0
 START_POLL_S = 0.1
+STOP_TIMEOUT_S = 10.0
 
 
 def send_command(command: str, name: str = SERVER_NAME) -> str | None:
@@ -86,6 +88,23 @@ def ensure_service(
             )
         time.sleep(START_POLL_S)
     raise ServiceUnavailable("the Quince service did not answer")
+
+
+def stop_service(name: str = SERVER_NAME, *, timeout_s: float = STOP_TIMEOUT_S) -> bool:
+    """Ask the service to quit and wait until it no longer answers. True when one was running.
+
+    Raises ``ServiceUnavailable`` when it still answers after ``timeout_s``.
+    """
+    if send_command("quit", name) is None:
+        return False
+    deadline = time.monotonic() + timeout_s
+    # While it shuts down, a connection may still be accepted without an answer ("").
+    while send_command("ping", name) is not None:
+        if time.monotonic() >= deadline:
+            raise ServiceUnavailable("the Quince service did not stop")
+        time.sleep(START_POLL_S)
+    log.info("stopped the Quince service")
+    return True
 
 
 class InstanceServer(QObject):

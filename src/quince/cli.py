@@ -223,6 +223,18 @@ def cmd_service(args: argparse.Namespace) -> int:
         answer = app.send_command("quit")
         print("Quince stopped." if answer is not None else "Quince is not running.")
         return 0 if answer is not None else 1
+    if args.restart:
+        try:
+            stopped = app.stop_service()
+        except app.ServiceUnavailable as exc:
+            print(f"quince: {exc}", file=sys.stderr)
+            return 1
+        print("Quince stopped." if stopped else "Quince was not running.")
+        # Home starts a fresh service in the background and shows the window.
+        code = _ask_service("home")
+        if code == 0:
+            print("Quince started.")
+        return code
     _setup_logging(args.verbose, to_file=True)
     return app.run_service(demo_ops=args.demo_ops)
 
@@ -329,7 +341,13 @@ def build_parser() -> argparse.ArgumentParser:
     wheel.set_defaults(func=cmd_wheel_demo)
 
     service = sub.add_parser("service", help="run the background service (drag + tap wheel)")
-    service.add_argument("--stop", action="store_true", help="stop the running service")
+    control = service.add_mutually_exclusive_group()
+    control.add_argument("--stop", action="store_true", help="stop the running service")
+    control.add_argument(
+        "--restart",
+        action="store_true",
+        help="stop the running service, then start it again and show Home",
+    )
     service.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     service.add_argument(
         "--demo-ops", action="store_true", help="add two demo jobs to the Tools wheel (testing)"

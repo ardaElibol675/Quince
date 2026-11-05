@@ -94,3 +94,37 @@ def test_home_reports_a_service_that_cannot_start(monkeypatch, capsys):
     monkeypatch.setattr(app, "ensure_service", lambda: False)
     monkeypatch.setattr(app, "send_command", lambda line: "error: nope")
     assert quince_cli.main(["library"]) == 1
+
+
+def test_restart_stops_the_service_then_opens_home(monkeypatch, capsys):
+    from quince import app
+    from quince import cli as quince_cli
+
+    calls = []
+    monkeypatch.setattr(app, "stop_service", lambda: calls.append("stop") or True)
+    monkeypatch.setattr(app, "ensure_service", lambda: calls.append("start") or True)
+    monkeypatch.setattr(app, "send_command", lambda line: calls.append(line) or "ok")
+    assert quince_cli.main(["service", "--restart"]) == 0
+    assert calls == ["stop", "start", "home"]
+    out = capsys.readouterr().out
+    assert "Quince stopped." in out
+    assert "Quince started." in out
+
+
+def test_restart_reports_a_service_that_does_not_stop(monkeypatch, capsys):
+    from quince import app
+    from quince import cli as quince_cli
+
+    def stuck():
+        raise app.ServiceUnavailable("the Quince service did not stop")
+
+    monkeypatch.setattr(app, "stop_service", stuck)
+    monkeypatch.setattr(app, "ensure_service", lambda: pytest.fail("must not start"))
+    assert quince_cli.main(["service", "--restart"]) == 1
+    assert "did not stop" in capsys.readouterr().err
+
+
+def test_stop_and_restart_are_exclusive(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["service", "--stop", "--restart"])
+    assert exc.value.code == 2

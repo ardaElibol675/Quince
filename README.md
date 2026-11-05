@@ -70,6 +70,7 @@ python scripts/check_formats.py                # probe real format support on th
 QUINCE_NESTED_X=1 pytest tests/integration/test_x11_drag.py   # drag tests in Xephyr (auto with Xvfb)
 quince service -v                              # run the background service (drag + tap = wheel)
 quince service --stop                          # stop it
+quince service --restart                       # stop it, start it again and show Home
 quince home | quince library                   # show the window (starts the service if needed)
 quince open [--wheel convert|tools|actions] FILE...   # a wheel at the pointer for these files
 quince integrate [--remove]                    # app menu entry + Nautilus "Open in Quince"
