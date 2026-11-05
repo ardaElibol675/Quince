@@ -788,3 +788,91 @@ Unpack into a private temporary folder, check, pack in the target format:
   PDFs, link cutting, scan detection, OCR messages, flat ODS/ODP, archive name checks.
 - `quince doctor` converts a generated PDF (heading, bold, list, Turkish) and reports whether
   OCR is ready.
+
+## Home, Library and Nautilus integration (Phase 11)
+
+### Entry points
+
+Everything runs in the service process (`quince service`); other `quince` commands and the
+Nautilus extension talk to it over the single-instance socket and start it first when it is
+not running (`app.ensure_service`: spawn `python -m quince service` in a new session without
+`PYTHONPATH`, then poll `ping` for up to 15 s; an early exit is reported with the log path).
+
+| Entry | Command on the socket | Result |
+|-------|-----------------------|--------|
+| App menu "Quince", `quince home`, tray "Open Quince" | `home` | the window on Home |
+| `quince library`, desktop action, tray "Library", Ctrl+F | `library` | the window on Library |
+| Nautilus "Open in Quince", `quince open [--wheel W] PATH...` | `open {"paths": [...], "wheel": W}` | a wheel at the pointer |
+| desktop action / tray "Quit Quince", `quince service --stop` | `quit` | the service stops |
+
+The socket protocol is one line per request, `<command>[ <argument>]`; a handler gets the
+argument and returns a one-line answer (`ok`, `error: ...`). A handler that raises is
+answered with `error: ...` instead of breaking the service.
+
+### Wheels without a drag (`ui/wheel/direct.py`)
+
+The drag controller and `DirectWheel` share the single `WheelWindow`. `open_at(owner=...)`
+records who opened it; each side ignores the wheel's `chosen` / `closed` / drag-enter signals
+while it is not the owner. A drag starting closes a direct wheel, and a direct wheel is not
+opened while a drag session owns the wheel (`controller.in_drag_session`).
+
+- Types are detected and the registry queried on a worker thread, like for drags.
+- The wheel opens with the requested wheel, else the first with items: Convert, Tools,
+  Actions (folders and mixed selections therefore open on Actions).
+- `open_at(grab=True)` takes the keyboard and the pointer (and repeats the grab after 60 ms,
+  in case the window was not viewable yet). Keys arrive as Qt events: arrows / Enter / Esc as
+  in the drag flow, a click on a slice chooses, a click anywhere else closes.
+- Trigger taps come from `input/taps.py` (`TapDetector`): the same rules as during a drag
+  (no other key or button in between, at most `max_tap_ms`), fed with keysym names from
+  `ui/keys.py` (`QKeyEvent.nativeVirtualKey()` is the X keysym on xcb).
+- The chosen operation is emitted only after the wheel closed and released its grabs, so a
+  `start` step can open a dialog right away (`OperationRunner.after_drag` runs at once when no
+  drag session is active).
+
+### Home and Library (`ui/home/`, `ui/library/`)
+
+One window (`MainWindow`) with two tabs. Esc / Ctrl+W hide it; the service keeps running.
+
+- Home: a drop area (drops answered as Copy; click = Open Files), "Files" for this session
+  (Enter or a trigger tap opens a wheel for the selected files at the current row, Delete
+  removes from the list) and "Freshly made" (the 8 newest Library outputs that still exist).
+  Ctrl+O opens files, Ctrl+V pastes (`paste.py`): file references from a file manager
+  (`x-special/gnome-copied-files`, `text/uri-list`, or text that is only existing paths) are
+  used in place; an image becomes PNG and other text UTF-8 `.txt` in
+  `~/.local/share/quince/pasted/` (`pasted-2026-11-05-143210.png`, never over a file).
+- Library: search as you type (every word must occur in the name, folder, "Made with" or a
+  source name), Enter / "Use in Quince" opens a wheel for the selected outputs, Show in Files,
+  Remove from Library (forgets, never deletes), Clear Library (asks first). Missing files are
+  shown dimmed and italic. Both lists drag out with Copy only.
+
+### History (`core/history.py`)
+
+SQLite in `~/.local/share/quince/history.sqlite3`, one row per output: path, operation id,
+job title ("Convert to JPG"), sources (JSON), time. `LibraryModel` records each successful
+job of a Convert or Tool operation from the job events (file actions make nothing new) and
+signals the pages. Only the newest 5000 rows are kept. A file that is not a database (or one
+from a newer schema) is moved aside as `history.sqlite3.broken-<time>` and a new one started;
+an unwritable location means an empty Library, never a crash. Outputs made before Phase 11
+were not recorded and cannot appear.
+
+### Desktop integration (`integrations/install.py`, `quince integrate`)
+
+Writes into the user's `~/.local/share` (no root; the `.deb` of Phase 17 installs the same
+files system-wide):
+- `applications/quince.desktop`: "Quince" (`Exec=<venv python> -m quince home`) with the
+  actions Library and Quit Quince; `StartupWMClass=quince` matches the window.
+- `icons/hicolor/scalable/apps/quince.svg`: a provisional icon (Phase 17 finalizes it); the
+  same file is the window and tray icon.
+- `nautilus-python/extensions/quince_nautilus.py`: a `MenuProvider` with "Open in Quince" for
+  local files and folders. It runs inside Nautilus (system Python, `python3-nautilus`), never
+  imports Quince, and starts `quince open -- PATH...` with the command written in at install
+  time, without `PYTHONPATH`. It supports the nautilus-python API 3.0 (Nautilus 42) and 4.0.
+  Non-local items (trash, network locations without a path) get no menu entry.
+
+`quince integrate --remove` deletes the three files.
+
+### Tray (`ui/tray.py`)
+
+`QSystemTrayIcon` with Open Quince, Library and Quit Quince. Qt 6 shows it as a
+StatusNotifierItem, which Ubuntu's AppIndicator extension (on by default) displays. Without a
+tray the service logs it and runs on; the app menu entry covers the same commands.

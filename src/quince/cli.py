@@ -227,6 +227,70 @@ def cmd_service(args: argparse.Namespace) -> int:
     return app.run_service(demo_ops=args.demo_ops)
 
 
+def _ask_service(command: str) -> int:
+    """Send ``command`` to the service, starting it first when it is not running."""
+    from quince import app
+
+    try:
+        app.ensure_service()
+    except app.ServiceUnavailable as exc:
+        from quince.core.logs import log_file
+
+        print(f"quince: {exc}; see {log_file()}", file=sys.stderr)
+        return 1
+    answer = app.send_command(command)
+    if answer is None:
+        print("quince: the Quince service did not answer", file=sys.stderr)
+        return 1
+    if answer != "ok":
+        print(f"quince: {answer}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_open(args: argparse.Namespace) -> int:
+    from quince.ui.shell import open_request
+
+    missing = [p for p in args.paths if not os.path.lexists(p)]
+    if missing:
+        print(f"quince: no such file or folder: {', '.join(missing)}", file=sys.stderr)
+        return 2
+    paths = [os.path.abspath(p) for p in args.paths]
+    return _ask_service(open_request(paths, args.wheel))
+
+
+def cmd_home(_args: argparse.Namespace) -> int:
+    return _ask_service("home")
+
+
+def cmd_library(_args: argparse.Namespace) -> int:
+    return _ask_service("library")
+
+
+def cmd_integrate(args: argparse.Namespace) -> int:
+    from quince.integrations import install
+
+    if args.remove:
+        removed = install.uninstall()
+        for path in removed:
+            print(f"removed {path}")
+        if not removed:
+            print("Nothing to remove.")
+        else:
+            print("Restart Nautilus to drop its menu entry: nautilus -q")
+        return 0
+    for path in install.install():
+        print(f"installed {path}")
+    print()
+    print("The app menu now has Quince (Home), with Library and Quit Quince actions.")
+    if install.nautilus_python_available():
+        print('Restart Nautilus to load "Open in Quince": nautilus -q')
+    else:
+        print('"Open in Quince" in Nautilus needs nautilus-python:')
+        print("  sudo apt install python3-nautilus && nautilus -q")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="quince", description=__doc__)
     parser.add_argument("--version", action="version", version=f"quince {__version__}")
@@ -271,6 +335,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--demo-ops", action="store_true", help="add two demo jobs to the Tools wheel (testing)"
     )
     service.set_defaults(func=cmd_service)
+
+    open_ = sub.add_parser("open", help="open the wheel at the pointer for files or folders")
+    open_.add_argument(
+        "--wheel",
+        choices=WHEELS,
+        help="wheel to open (default: the first one with items: Convert, Tools, Actions)",
+    )
+    open_.add_argument("paths", nargs="+", metavar="PATH")
+    open_.set_defaults(func=cmd_open)
+
+    home = sub.add_parser("home", help="show the Quince window (starts the service if needed)")
+    home.set_defaults(func=cmd_home)
+    library = sub.add_parser("library", help="show the Library")
+    library.set_defaults(func=cmd_library)
+
+    integrate = sub.add_parser(
+        "integrate", help="add Quince to the app menu and the Nautilus context menu"
+    )
+    integrate.add_argument("--remove", action="store_true", help="remove what was added")
+    integrate.set_defaults(func=cmd_integrate)
     return parser
 
 

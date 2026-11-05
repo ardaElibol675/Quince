@@ -4,6 +4,9 @@ It is independent of how it is opened. The service drives it from the global dra
 watcher; ``quince wheel-demo`` drives it directly. Keys arrive either as Qt key events (when
 the window has the keyboard) or through ``handle_key`` with X keysym names (raw X11 events).
 
+Without a drag (Home, the Nautilus menu, ``quince open``), ``open_at(grab=True)`` takes the
+keyboard and the pointer, so keys arrive as Qt events and a click outside closes the wheel.
+
 Drag sessions (``hold=True`` in ``open_at``): a drag source may still drop after the wheel
 closed (GTK drops on Enter and on right or middle clicks). So a closed wheel stays mapped,
 paints nothing and swallows drops as Copy until ``release()`` is called at the end of the
@@ -46,6 +49,8 @@ SWITCH_ROTATION = 24.0
 SWITCH_SCALE = 0.92
 # The wheel center keeps this distance (beyond the ring) from the screen edges.
 SCREEN_PADDING = 8.0
+# The window may not be viewable yet when it is shown; grabs are repeated after this delay.
+REGRAB_MS = 60
 
 QT_KEYS = {
     Qt.Key.Key_Left: "Left",
@@ -109,6 +114,9 @@ class WheelWindow(QWidget):
         self._center = QPointF()  # global position of the wheel center
         self._open = False
         self._hold = False  # keep mapped after closing, to swallow a late drop
+        self._grab_keyboard = False
+        self._grab_pointer = False
+        self.owner: object | None = None  # who opened the wheel (controller, direct session)
         # Paths read at drag enter. Reading them again at drop is a second round trip to the
         # drag source, which blocks the GUI thread (up to Qt's 5 s timeout) if it stalls.
         self._drag_paths: list[str] = []
@@ -152,11 +160,24 @@ class WheelWindow(QWidget):
         """Closed but still mapped, swallowing drops until ``release()``."""
         return self._hold and not self._open and self.isVisible()
 
-    def open_at(self, pos: QPoint | QPointF, content: WheelContent, *, hold: bool = False) -> None:
+    def open_at(
+        self,
+        pos: QPoint | QPointF,
+        content: WheelContent,
+        *,
+        hold: bool = False,
+        grab: bool = False,
+        owner: object | None = None,
+    ) -> None:
         """Show ``content`` centered on the global point ``pos`` (kept inside the screen).
 
-        With ``hold``, the window stays mapped after closing until ``release()``.
+        With ``hold``, the window stays mapped after closing until ``release()``. With
+        ``grab``, it takes the keyboard and the pointer while open (no drag in progress).
+        ``owner`` tells the users of one shared wheel whose session it is.
         """
+        if self._open and owner is not self.owner:
+            self.close_wheel("replaced")  # the previous owner hears about it
+        self.owner = owner
         self._hold = hold
         self._set_content(content)
         self._previous = None
@@ -167,8 +188,11 @@ class WheelWindow(QWidget):
         self._drag_paths = []
         self.show()
         self.raise_()
-        if self.grab_keyboard_on_open:
-            self.grabKeyboard()
+        self._grab_keyboard = grab or self.grab_keyboard_on_open
+        self._grab_pointer = grab
+        self._grab()
+        if self._grab_keyboard:
+            QTimer.singleShot(REGRAB_MS, self, self._grab)
         self._animate(1.0, OPEN_MS, QEasingCurve.Type.OutCubic)
         log.debug("wheel %s opened with %d items", content.wheel, len(content.items))
 
@@ -201,8 +225,7 @@ class WheelWindow(QWidget):
         if not self._open:
             return
         self._open = False
-        if self.grab_keyboard_on_open:
-            self.releaseKeyboard()
+        self._ungrab()
         log.debug("wheel closed: %s", reason)
         self.closed.emit(reason)
         self._animate(0.0, CLOSE_MS, QEasingCurve.Type.InCubic)
@@ -240,6 +263,21 @@ class WheelWindow(QWidget):
         return geometry.hit_test(self.layout_, rel.x(), rel.y())
 
     # --- internals ----------------------------------------------------------
+
+    def _grab(self) -> None:
+        if not self._open:
+            return
+        if self._grab_keyboard:
+            self.grabKeyboard()
+        if self._grab_pointer:
+            self.grabMouse()
+
+    def _ungrab(self) -> None:
+        if self._grab_keyboard:
+            self.releaseKeyboard()
+        if self._grab_pointer:
+            self.releaseMouse()
+        self._grab_keyboard = self._grab_pointer = False
 
     def _set_content(self, content: WheelContent) -> None:
         self.content = content

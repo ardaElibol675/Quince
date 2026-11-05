@@ -15,6 +15,11 @@ def _xdg(var: str, fallback: str) -> Path:
     return base / APP_DIR
 
 
+def data_home() -> Path:
+    """The user's XDG data folder itself (``~/.local/share``), for desktop integration."""
+    return _xdg("XDG_DATA_HOME", ".local/share").parent
+
+
 def config_dir() -> Path:
     return _xdg("XDG_CONFIG_HOME", ".config")
 

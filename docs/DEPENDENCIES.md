@@ -49,7 +49,15 @@ page stops the conversion with that install hint. `p7zip-full` enables the 7Z ro
 sudo apt install tesseract-ocr tesseract-ocr-tur p7zip-full unrar
 ```
 
-Expected in later phases (not needed yet): `python3-nautilus` (Phase 11, Nautilus extension).
+**Phase 11 (optional):** `python3-nautilus` (nautilus-python) loads the "Open in Quince"
+menu extension that `quince integrate` installs into `~/.local/share/nautilus-python/extensions/`.
+`quince doctor` reports it as `nautilus-python`. The Library uses Python's built-in `sqlite3`
+and the tray uses Qt (shown by Ubuntu's AppIndicator extension, installed by default); no
+Python package was added.
+
+```bash
+sudo apt install python3-nautilus && nautilus -q
+```
 
 Development only (optional, both installed on the dev machine): `xvfb` runs the nested-X
 drag tests invisibly (`tests/integration/test_x11_drag.py`), and `python3-gi` with GTK 3

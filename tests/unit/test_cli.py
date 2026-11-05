@@ -55,3 +55,42 @@ def test_render_doctor_terminal():
     missing = cli.render_doctor(_statuses(True, True), terminal=None)
     assert "No terminal program found" in missing
     assert "Terminal" not in cli.render_doctor(_statuses(True, True))
+
+
+def test_open_refuses_missing_paths(capsys, tmp_path):
+    from quince import cli as quince_cli
+
+    assert quince_cli.main(["open", str(tmp_path / "missing.png")]) == 2
+    assert "no such file" in capsys.readouterr().err
+
+
+def test_open_sends_absolute_paths_to_the_service(monkeypatch, tmp_path):
+    import json
+
+    from quince import app
+    from quince import cli as quince_cli
+
+    (tmp_path / "a b.png").write_bytes(b"x")
+    sent = []
+    monkeypatch.setattr(app, "ensure_service", lambda: False)
+    monkeypatch.setattr(app, "send_command", lambda line: sent.append(line) or "ok")
+    monkeypatch.chdir(tmp_path)
+    assert quince_cli.main(["open", "--wheel", "actions", "a b.png"]) == 0
+    command, _sep, arg = sent[0].partition(" ")
+    assert command == "open"
+    assert json.loads(arg) == {"paths": [str(tmp_path / "a b.png")], "wheel": "actions"}
+
+
+def test_home_reports_a_service_that_cannot_start(monkeypatch, capsys):
+    from quince import app
+    from quince import cli as quince_cli
+
+    def fail():
+        raise app.ServiceUnavailable("the Quince service stopped at start (exit 2)")
+
+    monkeypatch.setattr(app, "ensure_service", fail)
+    assert quince_cli.main(["home"]) == 1
+    assert "stopped at start" in capsys.readouterr().err
+    monkeypatch.setattr(app, "ensure_service", lambda: False)
+    monkeypatch.setattr(app, "send_command", lambda line: "error: nope")
+    assert quince_cli.main(["library"]) == 1

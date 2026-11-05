@@ -143,7 +143,7 @@ class DragWheelController(QObject):
             self.wheel.switch_to(content)
             log.info("wheel switched to %s: %s", wheel, _describe(content))
             return
-        self.wheel.open_at(QCursor.pos(), content, hold=True)
+        self.wheel.open_at(QCursor.pos(), content, hold=True, owner=self)
         center = self.wheel.center
         log.info("wheel %s opened at %d,%d: %s", wheel, center.x(), center.y(), _describe(content))
         self._nudge()
@@ -157,7 +157,8 @@ class DragWheelController(QObject):
 
     def _release(self, session: int | None) -> None:
         if session == self._session and not self._dragging:
-            self.wheel.release()
+            if self.wheel.owner is self:
+                self.wheel.release()
             self._run_pending()
 
     # --- after the drag -------------------------------------------------------------
@@ -165,7 +166,14 @@ class DragWheelController(QObject):
     @property
     def busy(self) -> bool:
         """A drag is in progress or the wheel is still mapped for it."""
-        return self._dragging or self.wheel.is_open or self.wheel.holding
+        return self.in_drag_session
+
+    @property
+    def in_drag_session(self) -> bool:
+        """A drag is in progress, or the wheel is still open or held for the last one."""
+        return self._dragging or (
+            self.wheel.owner is self and (self.wheel.is_open or self.wheel.holding)
+        )
 
     def after_drag(self, callback: Callable[[], None]) -> None:
         """Run ``callback`` on the GUI thread once the drag is over and the wheel released."""
@@ -223,6 +231,8 @@ class DragWheelController(QObject):
     # --- wheel signals ------------------------------------------------------------
 
     def _on_drag_entered(self, paths: list) -> None:
+        if self.wheel.owner is not self:
+            return
         if paths:
             self._resolve(tuple(paths))
         elif self._paths is None and self.wheel.is_open:
@@ -231,11 +241,15 @@ class DragWheelController(QObject):
             self.wheel.release()
 
     def _on_closed(self, reason: str) -> None:
+        if self.wheel.owner is not self:
+            return
         log.info("wheel closed: %s", reason)
         if self._dragging:
             self._used = True
 
     def _on_chosen(self, wheel: str, item_id: str, paths: list) -> None:
+        if self.wheel.owner is not self:
+            return  # a wheel opened without a drag (Home, Nautilus menu)
         op: Operation = self.registry.get(item_id)
         selection = self._selection
         if paths and (selection is None or tuple(paths) != self._paths):

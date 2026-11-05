@@ -23,5 +23,6 @@ def make_fixtures():
 
 @pytest.fixture(autouse=True)
 def _private_state_dir(tmp_path_factory, monkeypatch):
-    """Tests never write the user's state (recent destinations, logs)."""
+    """Tests never write the user's state (recent destinations, logs) or data (Library)."""
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("state")))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path_factory.mktemp("data")))

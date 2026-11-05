@@ -17,6 +17,12 @@ are in the dialog's sidebar), **Copy Path**, **Show in Files**, **Open With**, *
 Terminal** and **Float**, which puts the files on a small always-on-top shelf to drag them
 out later (dragging out always copies).
 
+Without a drag: the **Quince window** (app menu, tray icon or `quince home`) has a drop area,
+Open Files (Ctrl+O) and Paste (Ctrl+V); select files and press Enter or tap a trigger key for
+a wheel. The **Library** tab (Ctrl+F) lists every file Quince made. In Nautilus, right-click
+→ **Open in Quince** opens the wheel at the pointer (`quince integrate` installs the menu entry
+and the Nautilus extension; the extension needs `python3-nautilus`).
+
 > Status: early development.
 
 ## Development setup
@@ -59,6 +65,9 @@ python scripts/check_formats.py                # probe real format support on th
 QUINCE_NESTED_X=1 pytest tests/integration/test_x11_drag.py   # drag tests in Xephyr (auto with Xvfb)
 quince service -v                              # run the background service (drag + tap = wheel)
 quince service --stop                          # stop it
+quince home | quince library                   # show the window (starts the service if needed)
+quince open [--wheel convert|tools|actions] FILE...   # a wheel at the pointer for these files
+quince integrate [--remove]                    # app menu entry + Nautilus "Open in Quince"
 quince service -v --demo-ops                   # with two demo jobs on the Tools wheel
 python scripts/lock_deps.py [--check]          # update (or check) requirements.lock
 quince wheel-demo --n 7                        # preview the wheel (Shift/Ctrl/Alt tap = switch, Q = quit)
