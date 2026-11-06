@@ -125,8 +125,13 @@ def test_tools_offered_per_kind_of_file(tmp_path):
         sel = Selection.from_paths(paths)
         return [op.id for op in REGISTRY.query(sel, Kind.TOOL)]
 
-    assert tools("sample.jpg") == ["tool.compress", "tool.metadata", "tool.read_qr"]
+    assert tools("sample.jpg") == [
+        "tool.compress", "tool.crop_image", "tool.edit_image", "tool.annotate_image",
+        "tool.redact_image", "tool.frame_image", "tool.metadata", "tool.read_qr",
+    ]  # fmt: skip
     assert "tool.images_to_pdf" in tools("sample.jpg", "sample.png")
+    assert "tool.create_collage" in tools("sample.jpg", "sample.png")
+    assert "tool.crop_image" not in tools("sample.jpg", "sample.png")
     assert tools("sample.pdf") == ["tool.compress", "tool.metadata"]
     assert "tool.merge_pdfs" not in tools("sample.pdf")
     assert tools("sample-video.mp4")[:4] == [
@@ -135,7 +140,13 @@ def test_tools_offered_per_kind_of_file(tmp_path):
     assert "tool.join_videos" in tools("sample-video.mp4", "sample-video.mkv")
     assert tools("sample-audio.wav") == ["tool.metadata", "tool.normalize_audio"]
     assert tools("sample.zip") == ["tool.extract_archive"]
-    assert tools("sample.svg") == []
+    assert tools("sample.svg") == [
+        "tool.crop_image", "tool.edit_image", "tool.annotate_image", "tool.redact_image",
+        "tool.frame_image",
+    ]  # fmt: skip
+    svg = Selection.from_paths([copy_fixture("sample.svg", tmp_path)])
+    shown = REGISTRY.query(svg, Kind.TOOL, available=AVAILABLE)
+    assert bool(shown) == AVAILABLE.is_available("rsvg-convert")  # SVG is rendered to edit it
 
 
 # --- Compress ---------------------------------------------------------------------------------

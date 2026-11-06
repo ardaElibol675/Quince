@@ -4,7 +4,9 @@
 - ``start`` operations (most file actions) run on the GUI thread once the drag is over and
   the wheel is gone, because they may show a dialog or a menu, which cannot get the pointer
   while the drag source holds it. A ``JobRequest`` they return is queued as a job.
-- Operations without either still show the "not implemented yet" toast.
+- ``editor`` operations open their editor window once the drag is over (through
+  ``open_editor``); the job the editor makes on Save is queued like any other.
+- Operations without any of these still show the "not implemented yet" toast.
 
 Errors from a ``start`` step are shown in an error toast with the short reason.
 """
@@ -16,7 +18,7 @@ from collections.abc import Callable
 
 from quince.core import config
 from quince.core.jobs import JobError, JobQueue
-from quince.core.operations import Kind, Operation
+from quince.core.operations import JobRequest, Kind, Operation
 from quince.core.selection import Selection
 
 log = logging.getLogger(__name__)
@@ -41,17 +43,22 @@ class OperationRunner:
         *,
         after_drag: Callable[[Callable[[], None]], None],
         load_config: Callable[[], config.Config] = config.load,
+        open_editor: Callable[[Operation, Selection], object] | None = None,
     ) -> None:
         self.jobs = jobs
         self.host = host
         self._after_drag = after_drag
         self._load_config = load_config
+        self.open_editor = open_editor
 
     def run(self, op: Operation, selection: Selection) -> None:
         if op.start is not None:
             self._after_drag(lambda: self.start(op, selection))
         elif op.run is not None:
             self._submit(op.run, selection, job_title(op), op.id)
+        elif op.editor is not None and self.open_editor is not None:
+            open_editor = self.open_editor
+            self._after_drag(lambda: open_editor(op, selection))
         else:
             log.info("would run %s on %d item(s) (stub)", op.id, len(selection))
             self.host.notify(stub_message(op, selection))
@@ -72,6 +79,10 @@ class OperationRunner:
             return
         if request is not None:
             self._submit(request.run, selection, request.title or job_title(op), op.id)
+
+    def submit_request(self, op: Operation, selection: Selection, request: JobRequest) -> None:
+        """Queue the job an editor made for ``op``."""
+        self._submit(request.run, selection, request.title or job_title(op), op.id)
 
     def _submit(self, run, selection: Selection, title: str, op_id: str) -> None:
         output = self._load_config().output

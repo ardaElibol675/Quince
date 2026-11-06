@@ -282,7 +282,7 @@ def test_wheel_shows_registry_contents_switches_and_drop_with_shift_is_copy(sess
     assert contents == PNG_TARGETS
     session.tap("Shift_L", hold=0.6)  # too long: not a tap
     session.tap("Control_L")
-    session.wait_log("wheel switched to tools: Compress, Metadata, To One PDF")
+    session.wait_log("wheel switched to tools: Compress, Collage, Metadata, To One PDF")
     session.tap("Shift_L")
     session.wait_log(f"wheel switched to convert: {PNG_TARGETS}")
 

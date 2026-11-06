@@ -5,7 +5,8 @@ An operation's ``start`` step describes a ``Form``; the UI shows it as a small d
 Forms are data, so they are unit tested without Qt and every tool gets the same dialog.
 
 The last values are state, not settings: ``~/.local/state/quince/tool-options.json``,
-``{form id: {field key: value}}``. A broken file or a value that no longer fits a field means
+``{form id: {field key: value}}``; editors keep their last settings there too
+(``load_section`` / ``save_section``). A broken file or a value that no longer fits a field means
 that field's default.
 """
 
@@ -172,10 +173,20 @@ def initial_values(form: Form, path: Path | None = None) -> Values:
 
 
 def remember(form: Form, values: Mapping[str, Any], path: Path | None = None) -> None:
+    cleaned = form.clean(values)
+    save_section(form.id, {k: cleaned[k] for k in form.remembered_keys()}, path)
+
+
+def load_section(key: str, path: Path | None = None) -> dict[str, Any]:
+    """What was saved under ``key`` (e.g. an editor's last settings); {} when nothing."""
+    return dict(_read(path or default_file()).get(key, {}))
+
+
+def save_section(key: str, values: Mapping[str, Any], path: Path | None = None) -> None:
+    """Keep ``values`` (JSON-compatible) under ``key`` for next time; failures are logged."""
     path = path or default_file()
     data = _read(path)
-    cleaned = form.clean(values)
-    data[form.id] = {k: cleaned[k] for k in form.remembered_keys()}
+    data[key] = dict(values)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=".tool-options-", suffix=".json", dir=path.parent)

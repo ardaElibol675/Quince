@@ -418,7 +418,7 @@ Demo" (breaks halfway) to the Tools wheel. A nested-X test runs both from the wh
 
 ### Three ways to run an operation
 
-`Operation` has `run` (a background job), `editor` (Phase 13) or, new in this phase,
+`Operation` has `run` (a background job), `editor` (Phase 13, see below) or, new in this phase,
 `start(selection, host) -> JobRequest | None`: a step on the GUI thread. The file actions use
 it because they ask the user something (a folder, an application) or touch the desktop
 (clipboard, launching programs).
@@ -1025,4 +1025,63 @@ through DOCX and LibreOffice, since pandoc's ODT writer does not highlight code.
 - Slides (`backends/slidetext.py`): PPTX and ODP are read with `zipfile` + ElementTree: slide
   order from `presentation.xml` and its relationships, title placeholders, body placeholders
   and lists as bullets with their level, tables, speaker notes. PPT goes through PPTX.
+
+---
+
+## Editors and image editors (Phase 13)
+
+### Flow
+
+```
+wheel chosen ──▶ OperationRunner.run(op, selection)
+                   └─ op.editor → controller.after_drag(...) → EditorManager.open(op, selection)
+                        ├─ Editor.load(selection)      off the GUI thread (decoding)
+                        ├─ window.present()            non-modal; several may be open
+                        └─ Save → window.saved(JobRequest) → runner.submit_request → JobQueue
+```
+
+- `ui/editors/manager.py`: `discover()` finds every module in `quince.ui.editors.image` (more
+  packages later) that defines `EDITOR`, keyed by its `name`; `Operation.editor` names it. A
+  load failure (`JobError`) is an error toast; a missing editor name too.
+- `ui/editors/base.py` `EditorWindow`: toolbar row (hidden when empty), canvas, optional side
+  panel, bottom bar (hint, info, Original / Preview toggle, Cancel, Save). Shared keys: Enter /
+  Ctrl+S save (Enter in a number field only applies it), Esc closes (asks "Discard your
+  changes?" when something changed), Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, `\` compare.
+  `History` keeps immutable editor states; pushes with the same `merge` key within 0.8 s (a
+  slider drag, arrow-key nudges) are one undo step. "Changed?" is `state != initial state`.
+- An editor implements `load`, `state` / `set_state`, `build_job`, optionally `can_save`,
+  `compare_image`, `remember` (settings kept via `forms.save_section` in
+  `~/.local/state/quince/tool-options.json`).
+- `ui/editors/canvas.py` `ImageCanvas`: shows a preview `QImage` stretched over the result's
+  *logical* size (original pixels), fitted with a margin (at most 4x for tiny images), and hands
+  mouse / key events to a `CanvasTool` in original-pixel coordinates. `rects.py` (pure box
+  geometry: handles, move, resize with ratio, fit) and `boxes.py` (box gestures and drawing)
+  are shared by Crop and Redact.
+
+### Same function for preview and result
+
+Editors describe the result as data and apply one function both to a preview (longer side
+1600 px) and, in the job, to the full image:
+
+| Editor | State | Function (backend) | Output |
+|--------|-------|--------------------|--------|
+| Crop | box (original px), ratio | `imageedit.crop` | `name-cropped` |
+| Edit | `Adjust` (quarter turns, mirrors, size, brightness / contrast / saturation) | `imageedit.adjust` | `name-edited` |
+| Frame | `FrameStyle` (padding, background, radius, shadow as fractions of the shorter side) | `imageedit.frame` | `name-framed` |
+| Annotate | `Shape` list (pen, highlighter, line, arrow, box, ellipse, text) | `painting.annotate` (QPainter) | `name-annotated` |
+| Redact | `Redaction` list (box + solid / blur / pixelate) | `imageedit.redact` | `name-redacted` |
+| Collage | order, `CollageStyle`, width | `collage.render` | `first-collage` |
+
+Sizes that must look alike at every scale are fractions (frame padding, blur strength, pixel
+blocks per area), so the preview matches. Annotations are painted with QPainter on a `QImage`
+in the job too (antialiased, same font as on screen); painting on a QImage is allowed off the
+GUI thread.
+
+### Saving (`imageedit.save_edited`)
+
+Same format as the source; SVG → PNG (rendered with `rsvg-convert`); a transparent result whose
+format has no alpha (a JPG framed on a transparent background) → PNG with a note. Animated GIF
+/ WebP: every frame goes through the function. EXIF orientation is applied first; EXIF (without
+orientation; Pillow never writes the IFD1 thumbnail) and the color profile are kept. Redact
+drops EXIF (maker notes may hold a preview). Pixels are edited as 8-bit RGB(A).
 

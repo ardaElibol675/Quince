@@ -74,3 +74,17 @@ def test_natural_order():
     assert [p.name for p in natural_order([Path(n) for n in names])] == [
         "a.pdf", "page1.pdf", "Page2.pdf", "page10.pdf", "part 9.mp4", "part 10.mp4"
     ]  # fmt: skip
+
+
+def test_sections_for_editor_settings(tmp_path):
+    path = tmp_path / "tool-options.json"
+    assert forms.load_section("editor.frame", path) == {}
+    forms.save_section("editor.frame", {"padding": 0.1, "background": [0, 0, 0, 255]}, path)
+    forms.save_section("editor.collage", {"layout": "row"}, path)
+    assert forms.load_section("editor.frame", path) == {
+        "padding": 0.1,
+        "background": [0, 0, 0, 255],
+    }
+    assert forms.load_section("editor.collage", path) == {"layout": "row"}
+    path.write_text("not json")
+    assert forms.load_section("editor.frame", path) == {}  # a broken file means defaults

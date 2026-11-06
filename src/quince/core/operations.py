@@ -10,7 +10,8 @@ An operation does its work in one of three ways:
 - ``start(selection, host)``: a step on the GUI thread, run once the drag is over. It may ask
   the user through ``host`` (a folder, an application, ...) and do instant work (clipboard,
   launching a program). It returns a ``JobRequest`` to queue, or None when it is done.
-- ``editor``: the name of an editor that opens first and produces the job (Phase 13).
+- ``editor``: the name of an editor window (``quince.ui.editors``) that opens once the drag is
+  over; the user's choices there produce the job, queued on Save.
 """
 
 from __future__ import annotations

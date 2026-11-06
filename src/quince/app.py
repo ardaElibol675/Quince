@@ -171,6 +171,7 @@ def run_service(*, demo_ops: bool = False) -> int:
     from quince.core.registry import discover
     from quince.input import drag
     from quince.input.x11 import X11InputWatcher, X11Unavailable
+    from quince.ui.editors.manager import EditorManager
     from quince.ui.feedback.jobs import JobBridge, JobsPanel
     from quince.ui.feedback.toast import Toast
     from quince.ui.host import QtHost
@@ -224,6 +225,10 @@ def run_service(*, demo_ops: bool = False) -> int:
 
     host = QtHost(toast, get_shelf)
     runner = OperationRunner(jobs, host, after_drag=controller.after_drag)
+    editors = EditorManager(
+        runner.submit_request, notify=host.notify, notify_error=host.notify_error
+    )
+    runner.open_editor = editors.open
     controller.operation_chosen.connect(runner.run)
     library = LibraryModel()
     job_bridge.event.connect(library.on_job_event)

@@ -22,6 +22,12 @@ The Tools wheel offers **Compress** (by quality, a percentage or a target size),
 archives, **Join** videos, **Merge PDFs**, images **To One PDF** and **Read QR** codes; the
 Actions wheel also has **Archive** (ZIP, TAR.GZ, 7Z).
 
+Images open in editors from the Tools wheel: **Crop**, **Edit** (turn, mirror, resize,
+brightness, contrast, saturation), **Annotate** (pen, highlighter, lines, arrows, boxes,
+ellipses, text), **Redact** (black box, blur, pixelate), **Frame** (padding, background,
+rounded corners, shadow) and, for several images, **Collage**. In every editor Enter or Ctrl+S
+saves a new file, Esc closes, Ctrl+Z undoes and `\` shows the original.
+
 Without a drag: the **Quince window** (app menu, tray icon or `quince home`) has a drop area,
 Open Files (Ctrl+O) and Paste (Ctrl+V); select files and press Enter or tap a trigger key for
 a wheel. The **Library** tab (Ctrl+F) lists every file Quince made. In Nautilus, right-click

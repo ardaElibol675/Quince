@@ -243,28 +243,49 @@ def _save(im: Image.Image, out: Path, target_id: str, **options: Any) -> None:
 
 
 def _save_animation(ctx: JobContext, im: Image.Image, out: Path, target_id: str) -> list[str]:
-    target = TARGETS[target_id]
-    notes: list[str] = []
     frames, durations = [], []
     for frame in ImageSequence.Iterator(im):
         ctx.check()
-        durations.append(frame.info.get("duration", im.info.get("duration", 100)) or 100)
-        prepared = prepare(frame.copy(), target)
+        durations.append(frame_duration(frame, im))
+        frames.append(frame.copy())
+    return save_frames(ctx, frames, durations, im.info.get("loop", 0), out, target_id)
+
+
+def frame_duration(frame: Image.Image, im: Image.Image) -> int:
+    """How long one frame of an animation is shown, in ms (100 when unknown)."""
+    return frame.info.get("duration", im.info.get("duration", 100)) or 100
+
+
+def save_frames(
+    ctx: JobContext,
+    frames: list[Image.Image],
+    durations: list[int],
+    loop: int,
+    out: Path,
+    target_id: str,
+) -> list[str]:
+    """Write ``frames`` as an animated GIF or WebP; returns notes."""
+    target = TARGETS[target_id]
+    notes: list[str] = []
+    prepared_frames = []
+    for frame in frames:
+        ctx.check()
+        prepared = prepare(frame, target)
         if prepared.flattened and FLATTENED_NOTE not in notes:
             notes.append(FLATTENED_NOTE)
-        frames.append(prepared.image)
-    _check_size(frames[0], target_id, target)
+        prepared_frames.append(prepared.image)
+    _check_size(prepared_frames[0], target_id, target)
     options = dict(target.options)
-    if target_id == "gif" and any(f.mode == "RGBA" for f in frames):
+    if target_id == "gif" and any(f.mode == "RGBA" for f in prepared_frames):
         options["disposal"] = 2  # clear each frame, or transparent areas keep old pixels
     _save(
-        frames[0],
+        prepared_frames[0],
         out,
         target_id,
         save_all=True,
-        append_images=frames[1:],
+        append_images=prepared_frames[1:],
         duration=durations,
-        loop=im.info.get("loop", 0),
+        loop=loop,
         **options,
     )
     return notes

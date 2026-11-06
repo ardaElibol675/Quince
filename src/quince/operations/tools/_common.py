@@ -5,12 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from quince.backends import imageedit
 from quince.core.forms import natural_order
 from quince.core.jobs import JobContext
 from quince.core.operations import Host
 from quince.core.selection import Item, Selection
 
 MEDIA_DEPS = ("ffmpeg", "ffprobe")
+# Image editors (Phase 13): every image format; an SVG is rendered to pixels first.
+IMAGE_EDITABLE = imageedit.EDITABLE
+IMAGE_EDITOR_DEPS = {"heic": ("pillow-heif",), "svg": ("rsvg-convert",)}
 
 
 def each_file(ctx: JobContext, work: Callable[[JobContext, Item], None]) -> None:
