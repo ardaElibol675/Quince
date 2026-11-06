@@ -1,4 +1,5 @@
-"""Video snapshots: saves chosen frames of a video as pictures."""
+"""Edit video: opens the Video Editor (trim, crop, redact, speed, sound, split and frames in
+one window); Save asks for the name, format and folder of the new file (``name-edited``)."""
 
 from __future__ import annotations
 
@@ -7,13 +8,13 @@ from quince.core.operations import Accepts, Kind, Operation
 from quince.operations.tools._common import MEDIA_DEPS
 
 OPERATION = Operation(
-    id="tool.video_snapshots",
+    id="tool.edit_video",
     kind=Kind.TOOL,
-    label="Snapshots",
-    title="Video snapshots…",
-    icon="camera-photo",
+    label="Edit",
+    title="Edit video…",
+    icon="quince-edit",
     accepts=Accepts(categories=frozenset({Category.VIDEO}), max_items=1),
     requires=MEDIA_DEPS,
-    order=15,
-    editor="video.snapshots",
+    order=5,
+    editor="video.edit",
 )

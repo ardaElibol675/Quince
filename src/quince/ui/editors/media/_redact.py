@@ -1,4 +1,4 @@
-"""Redact video: hide areas of the picture for a stretch of time, saved as ``name-redacted``.
+"""Redact, in the Video Editor: hide areas of the picture for a stretch of time.
 
 Drag on the picture to cover an area; it is hidden between In and Out (the whole video
 without them), shown as a red band on the timeline. Click an area or its band to pick it, drag
@@ -12,19 +12,17 @@ from __future__ import annotations
 from dataclasses import replace
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QKeyEvent, QKeySequence, QMouseEvent, QPainter, QShortcut
-from PySide6.QtWidgets import QButtonGroup
+from PySide6.QtGui import QColor, QKeyEvent, QKeySequence, QMouseEvent, QPainter
+from PySide6.QtWidgets import QButtonGroup, QLabel
 
 from quince.backends import mediaedit
 from quince.backends.mediaedit import Region
-from quince.core.operations import JobRequest
 from quince.ui.editors import rects
-from quince.ui.editors.base import separator, tool_button
+from quince.ui.editors.base import Mode, separator, tool_button, toolbar_row
 from quince.ui.editors.boxes import BoxGesture, handle_cursor, handle_under, paint_box, widget_box
 from quince.ui.editors.canvas import CanvasTool, ImageCanvas
-from quince.ui.editors.image.redact import NEW_MIN_PX, STYLES
+from quince.ui.editors.image._redact import NEW_MIN_PX, STYLES
 from quince.ui.editors.media import marks as m
-from quince.ui.editors.media._common import MediaEditor
 
 BLUR_PREVIEW = 10  # preview blur: shrink the area this many times and stretch it back
 
@@ -62,7 +60,7 @@ def paint_effect(painter: QPainter, canvas: ImageCanvas, region: Region) -> None
 
 
 class RegionTool(CanvasTool):
-    def __init__(self, editor: RedactVideoEditor) -> None:
+    def __init__(self, editor: VideoRedactPart) -> None:
         self.editor = editor
         self.gesture: BoxGesture | None = None
         self.index: int | None = None
@@ -102,7 +100,7 @@ class RegionTool(CanvasTool):
         if self.index is None:
             if rects.is_tiny(box, NEW_MIN_PX / self.canvas.scale):
                 return
-            start, end = editor.marks.span(editor.duration)
+            start, end = editor.marks.span(editor.editor.duration)
             editor.regions = (*editor.regions, Region(box, start, end, editor.style_key()))
             self.index = len(editor.regions) - 1
             editor.select(self.index)
@@ -150,67 +148,77 @@ class RegionTool(CanvasTool):
             paint_box(painter, canvas, region.box, handles=visible, dashed=not visible)
 
 
-class RedactVideoEditor(MediaEditor):
-    name = "video.redact"
-    title = "Redact Video"
-    save_label = "Save Redacted"
-    needs_video = True
-
-    def __init__(self, selection, data, parent=None) -> None:
-        super().__init__(selection, data, parent)
-        w, h = self.source.size
+class VideoRedactPart:
+    def __init__(self, editor) -> None:
+        self.editor = editor
+        w, h = editor.source.size
         self.bounds = (0.0, 0.0, float(w), float(h))
-        self.regions: tuple[Region, ...] = ()
         self.selected: int | None = None
-
-        self.styles = QButtonGroup(self)
+        widget, row = toolbar_row()
+        self.mode = Mode(
+            "redact", "Redact", icon="quince-redact", tip="Hide areas of the picture",
+            toolbar=widget, hint="Drag to cover an area; it is hidden between In and Out",
+        )  # fmt: skip
+        self.styles = QButtonGroup(widget)
         self.styles.setExclusive(True)
         for key, label, shortcut, tip in STYLES:
             button = tool_button(label, tip=f"{tip}  {shortcut}", checkable=True)
             button.setProperty("quince_style", key)
             button.setChecked(key == "solid")
             self.styles.addButton(button)
-            self.add_tool(button)
-            QShortcut(QKeySequence(shortcut), self, lambda b=button: b.click(),
-                      context=Qt.ShortcutContext.WindowShortcut)  # fmt: skip
+            row.addWidget(button)
+            editor.mode_key(self.mode, shortcut, button.click)
         self.styles.buttonClicked.connect(lambda _b: self._on_style())
-        self.add_tool(separator())
+        row.addWidget(separator())
         self.span_button = tool_button("Use In–Out", tip="Hide the picked area between In and Out")
         self.span_button.clicked.connect(self.use_marks)
-        self.add_tool(self.span_button)
+        row.addWidget(self.span_button)
         self.delete_button = tool_button("Delete", icon="edit-delete", tip="Delete  Del")
         self.delete_button.clicked.connect(self.delete_selected)
-        self.add_tool(self.delete_button)
-        self.toolbar.addStretch(1)
-        QShortcut(QKeySequence(Qt.Key.Key_Delete), self, self.delete_selected,
-                  context=Qt.ShortcutContext.WindowShortcut)  # fmt: skip
-
-        self.canvas.tool = RegionTool(self)
-        self.media_hint("Drag to cover an area; it is hidden between In and Out")
+        row.addWidget(self.delete_button)
+        row.addSpacing(10)
+        self.label = QLabel()
+        self.label.setEnabled(False)
+        row.addWidget(self.label)
+        row.addStretch(1)
+        editor.mode_key(self.mode, QKeySequence(Qt.Key.Key_Delete), self.delete_selected)
+        self.tool = RegionTool(self)
+        self.mode.tool = self.tool
         self.select(None)
-        self.start_history()
+
+    # --- what RegionTool needs ----------------------------------------------------------
+
+    @property
+    def canvas(self) -> ImageCanvas:
+        return self.editor.canvas
+
+    @property
+    def marks(self):
+        return self.editor.marks
+
+    @property
+    def position(self) -> float:
+        return self.editor.position
+
+    @property
+    def regions(self) -> tuple[Region, ...]:
+        return self.editor.edit.regions
+
+    @regions.setter
+    def regions(self, regions) -> None:
+        self.editor.change(replace(self.editor.edit, regions=tuple(regions)), record=False)
 
     def style_key(self) -> str:
         button = self.styles.checkedButton()
         return button.property("quince_style") if button is not None else "solid"
 
-    # --- state --------------------------------------------------------------------------
-
-    def state(self) -> tuple[Region, ...]:
-        return self.regions
-
-    def set_state(self, state: tuple[Region, ...]) -> None:
-        self.regions = state
-        if self.selected is not None and self.selected >= len(state):
-            self.selected = None
-        self.select(self.selected)
-
-    def can_save(self) -> bool:
-        return bool(self.regions) and super().can_save()
+    def commit(self, merge: str | None = None) -> None:
+        self.editor.change(self.editor.edit, merge=merge)
 
     def region_at(self, point: tuple[float, float]) -> int | None:
-        for index in range(len(self.regions) - 1, -1, -1):
-            region = self.regions[index]
+        regions = self.regions
+        for index in range(len(regions) - 1, -1, -1):
+            region = regions[index]
             if region.visible(self.position) and rects.contains(region.box, point):
                 return index
         return None
@@ -224,19 +232,20 @@ class RedactVideoEditor(MediaEditor):
             for button in self.styles.buttons():
                 if button.property("quince_style") == style:
                     button.setChecked(True)
-        self._refresh()
+        self.sync()
 
     def replace_region(self, index: int, region: Region) -> None:
         regions = list(self.regions)
         regions[index] = region
         self.regions = tuple(regions)
-        self._refresh()
+        self.sync()
 
     def delete_selected(self) -> bool:
         if self.selected is None:
             return False
         regions = list(self.regions)
         del regions[self.selected]
+        self.selected = None
         self.regions = tuple(regions)
         self.select(None)
         self.commit()
@@ -245,10 +254,9 @@ class RedactVideoEditor(MediaEditor):
     def use_marks(self) -> None:
         if self.selected is None:
             return
-        start, end = self.marks.span(self.duration)
-        self.replace_region(
-            self.selected, replace(self.regions[self.selected], start=start, end=end)
-        )
+        start, end = self.marks.span(self.editor.duration)
+        region = replace(self.regions[self.selected], start=start, end=end)
+        self.replace_region(self.selected, region)
         self.commit()
 
     def _on_style(self) -> None:
@@ -264,25 +272,16 @@ class RedactVideoEditor(MediaEditor):
         if hits:
             self.select(self.selected if self.selected in hits else hits[-1])
 
-    def on_position(self, t: float) -> None:
-        self.canvas.update()
-
-    def _refresh(self) -> None:
-        self.timeline.set_spans([(r.start, r.end) for r in self.regions], self.selected)
-        count = len(self.regions)
-        text = f"{count} area{'s' if count != 1 else ''}" if count else ""
+    def sync(self) -> None:
+        regions = self.regions
+        if self.selected is not None and self.selected >= len(regions):
+            self.selected = None
+        if self.editor.mode is self.mode:
+            self.editor.timeline.set_spans([(r.start, r.end) for r in regions], self.selected)
+        count = len(regions)
+        text = f"{count} area{'s' if count != 1 else ''}" if count else "No areas"
         if self.selected is not None:
-            region = self.regions[self.selected]
+            region = regions[self.selected]
             text += f" · picked: {m.clock(region.start)} – {m.clock(region.end)}"
-        self.info.setText(text)
+        self.label.setText(text)
         self.canvas.update()
-        self.update_buttons()
-
-    def build_job(self) -> JobRequest:
-        source, regions = self.source, self.regions
-        return self.job(
-            lambda ctx, out: mediaedit.redact_video(ctx, source, out, regions), "redacted"
-        )
-
-
-EDITOR = RedactVideoEditor

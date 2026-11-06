@@ -1,5 +1,6 @@
 """The timeline of the media editors: the playhead, in / out points, markers, cut lines,
-time spans (redactions) and, for sound, the waveform (one lane per channel when given).
+time spans (redactions, bleeps), the trimmed part and, for sound, the waveform (one lane per
+channel when given).
 
 A click or drag moves the playhead (``seek``); ``pressed`` also tells the editor where the
 click landed, so it can pick a span there.
@@ -29,6 +30,7 @@ MARGIN = 10
 SPAN_COLOR = QColor(220, 50, 47)
 CUT_COLOR = QColor(255, 255, 255, 200)
 SHADE = QColor(0, 0, 0, 110)
+TRIM_SHADE = QColor(0, 0, 0, 170)
 MAX_GAIN = 8.0  # the waveform is scaled to its loudest peak, at most this much
 
 
@@ -46,6 +48,7 @@ class Timeline(QWidget):
         self.spans: tuple[tuple[float, float], ...] = ()
         self.selected_span: int | None = None
         self.cuts: tuple[float, ...] = ()
+        self.trim: tuple[float, float] | None = None
         self.tall = tall
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMinimumHeight(140 if tall else 48)
@@ -87,6 +90,11 @@ class Timeline(QWidget):
         self.cuts = tuple(cuts)
         self.update()
 
+    def set_trim(self, trim: tuple[float, float] | None) -> None:
+        """The part that is kept (the rest is shown dark), or None for all of it."""
+        self.trim = trim
+        self.update()
+
     # --- coordinates --------------------------------------------------------------------
 
     def area(self) -> QRectF:
@@ -114,6 +122,7 @@ class Timeline(QWidget):
         painter.save()
         painter.setClipRect(area)
         self._paint_lanes(painter, area, colors.accent)
+        self._paint_trim(painter, area, colors.accent)
         self._paint_spans(painter, area)
         self._paint_range(painter, area, colors.accent)
         self._paint_cuts(painter, area)
@@ -161,6 +170,20 @@ class Timeline(QWidget):
             if n < len(self.lane_labels) and self.lane_labels[n]:
                 painter.setPen(text)
                 painter.drawText(QPointF(area.left() + 6, top + 14), self.lane_labels[n])
+
+    def _paint_trim(self, painter: QPainter, area: QRectF, color: QColor) -> None:
+        if self.trim is None:
+            return
+        x0, x1 = self.x_of(self.trim[0]), self.x_of(self.trim[1])
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(TRIM_SHADE)
+        painter.drawRect(QRectF(area.left(), area.top(), x0 - area.left(), area.height()))
+        painter.drawRect(QRectF(x1, area.top(), area.right() - x1, area.height()))
+        edge = QColor(color)
+        edge.setAlpha(230)
+        painter.setPen(QPen(edge, 3))
+        for x in (x0, x1):
+            painter.drawLine(QPointF(x, area.top()), QPointF(x, area.bottom()))
 
     def _paint_spans(self, painter: QPainter, area: QRectF) -> None:
         for n, (start, end) in enumerate(self.spans):

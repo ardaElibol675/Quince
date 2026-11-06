@@ -1,5 +1,5 @@
-"""Edit image: opens the Edit editor (turn, mirror, resize, brightness, contrast,
-saturation); the result is saved as ``name-edited``."""
+"""Edit image: opens the Image Editor (crop, adjust, redact, annotate, frame in one window);
+Save asks for the name, format and folder of the new file (``name-edited`` by default)."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ OPERATION = Operation(
     kind=Kind.TOOL,
     label="Edit",
     title="Edit image…",
-    icon="image-x-generic",
+    icon="quince-edit",
     accepts=Accepts(formats=IMAGE_EDITABLE, max_items=1),
     requires=("pillow",),
     requires_by_format=IMAGE_EDITOR_DEPS,
-    order=12,
+    order=5,
     editor="image.edit",
 )

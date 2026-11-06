@@ -84,3 +84,20 @@ def test_gives_up_instead_of_overwriting(tmp_path, monkeypatch):
         (tmp_path / name).touch()
     with pytest.raises(FileExistsError):
         unique_path(tmp_path / "a.txt")
+
+
+def test_chosen_name_replaces_the_stem_and_stays_free(tmp_path):
+    src = tmp_path / "photo.jpg"
+    src.touch()
+    assert output_path(src, extension="png", stem="holiday") == tmp_path / "holiday.png"
+    (tmp_path / "holiday.png").touch()
+    assert output_path(src, extension="png", stem="holiday") == tmp_path / "holiday (1).png"
+    # the source itself is never chosen, even when the user types its name
+    assert output_path(src, stem="photo") == tmp_path / "photo (1).jpg"
+
+
+def test_chosen_name_is_cleaned(tmp_path):
+    src = tmp_path / "photo.jpg"
+    assert naming.clean_stem("  a/b  ") == "a-b"
+    assert naming.clean_stem(" ..hidden. ") == "hidden"
+    assert output_path(src, stem="   ") == tmp_path / "photo.jpg"  # empty: the source's

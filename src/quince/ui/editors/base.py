@@ -9,6 +9,14 @@ An editor subclasses ``EditorWindow`` and
   "changed?"), ``build_job()`` (the background job that writes the result);
 - calls ``start_history()`` once its controls exist, and ``commit()`` after every change.
 
+An editor that asks where to save (``output_choices()`` returns formats) opens the Save
+window first and gets the chosen ``SaveTarget`` in ``build_job(target)``; ``export()`` hands
+a job over without closing the editor (Save Parts, Save Frames).
+
+A combined editor is made of **modes** (``add_mode``): each has a button in the toolbar
+(Ctrl+1, Ctrl+2, ...), its own toolbar row and side panel, its own canvas tool and keys that
+only work while it is shown (``mode_key``). One undo history covers every mode.
+
 Shared keys: Ctrl+S or Enter saves, Esc closes (asking first when something changed),
 Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y) undo and redo, ``\\`` shows the original (or, in Crop, the
 result) while toggled.
@@ -17,7 +25,7 @@ result) while toggled.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Sequence
 from typing import Any, ClassVar
 
 from PySide6.QtCore import QSizeF, Qt, QTimer, Signal
@@ -44,6 +52,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSlider,
+    QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -51,7 +60,8 @@ from PySide6.QtWidgets import (
 
 from quince.core.operations import JobRequest
 from quince.core.selection import Selection
-from quince.ui.editors.canvas import ImageCanvas
+from quince.ui.editors.canvas import CanvasTool, ImageCanvas
+from quince.ui.editors.save_dialog import OutputChoice, SaveDialog, SaveTarget, run_save_dialog
 
 SIDE_WIDTH = 270
 WINDOW_FRACTION = 0.82
@@ -138,6 +148,37 @@ def _typing(widget: QWidget | None) -> bool:
     return isinstance(widget, QLineEdit | QPlainTextEdit | QAbstractSpinBox)
 
 
+class Mode:
+    """One part of a combined editor (Crop, Redact, Trim, ...).
+
+    ``toolbar``: a row shown next to the mode buttons; ``panel``: the side panel (None hides
+    the side area); ``tool``: what the mouse does on the canvas in this mode.
+    """
+
+    def __init__(
+        self,
+        key: str,
+        label: str,
+        *,
+        icon: str = "",
+        tip: str = "",
+        toolbar: QWidget | None = None,
+        panel: QWidget | None = None,
+        tool: CanvasTool | None = None,
+        hint: str = "",
+    ) -> None:
+        self.key = key
+        self.label = label
+        self.icon = icon
+        self.tip = tip or label
+        self.toolbar = toolbar
+        self.panel = panel
+        self.tool = tool
+        self.hint = hint
+        self.shortcuts: list[QShortcut] = []
+        self.button: QToolButton | None = None
+
+
 class EditorWindow(QWidget):
     name: ClassVar[str] = ""
     title: ClassVar[str] = "Editor"
@@ -159,6 +200,9 @@ class EditorWindow(QWidget):
         self.data = data
         self.history: History | None = None
         self.confirm_discard: Callable[[], bool] = self._ask_discard
+        self.run_save_dialog: Callable[[SaveDialog], SaveTarget | None] = run_save_dialog
+        self.modes: list[Mode] = []
+        self.mode: Mode | None = None
         self._done = False
         files = selection.files
         name = files[0].path.name if len(files) == 1 else f"{len(files)} images"
@@ -168,9 +212,24 @@ class EditorWindow(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         self.toolbar_area = QWidget()
-        self.toolbar = QHBoxLayout(self.toolbar_area)
-        self.toolbar.setContentsMargins(10, 8, 10, 8)
+        rows = QVBoxLayout(self.toolbar_area)
+        rows.setContentsMargins(10, 8, 10, 8)
+        rows.setSpacing(6)
+        outer = QHBoxLayout()
+        outer.setSpacing(6)
+        rows.addLayout(outer)
+        self.mode_bar = QHBoxLayout()  # the mode buttons of a combined editor
+        self.mode_bar.setSpacing(2)
+        outer.addLayout(self.mode_bar)
+        self.toolbar = QHBoxLayout()
         self.toolbar.setSpacing(6)
+        outer.addLayout(self.toolbar, 1)
+        self.mode_tools = QStackedWidget()  # the toolbar row of the current mode, below
+        self.mode_tools.setVisible(False)
+        self.mode_tools.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        rows.addWidget(self.mode_tools)
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(True)
         root.addWidget(self.toolbar_area)
         self.toolbar_line = _line()
         root.addWidget(self.toolbar_line)
@@ -186,6 +245,9 @@ class EditorWindow(QWidget):
         self.side.setContentsMargins(14, 12, 14, 12)
         self.side.setSpacing(8)
         self.side_area.setVisible(self.side_panel)
+        self.mode_panels = QStackedWidget()  # the side panel of the current mode
+        self.mode_panels.setVisible(False)
+        self.side.addWidget(self.mode_panels)
         middle.addWidget(self.side_area)
         root.addLayout(middle, 1)
         self.below = QVBoxLayout()  # under the preview: e.g. the media timeline
@@ -240,8 +302,24 @@ class EditorWindow(QWidget):
         """Show ``state`` (undo / redo): update the controls and the preview."""
         raise NotImplementedError
 
-    def build_job(self) -> JobRequest:
+    def build_job(self, target: SaveTarget | None = None) -> JobRequest:
+        """The job writing the result; ``target`` is what the Save window returned (for
+        editors with ``output_choices``)."""
         raise NotImplementedError
+
+    def output_choices(self) -> Sequence[OutputChoice]:
+        """The formats the Save window offers; empty: no Save window (the editor names the
+        output itself)."""
+        return ()
+
+    def default_format(self) -> str:
+        return self.output_choices()[0].format_id
+
+    def default_stem(self) -> str:
+        return f"{self.selection.files[0].path.stem}-edited"
+
+    def before_save(self) -> None:
+        """Finish what is being typed or dragged before the result is read."""
 
     def can_save(self) -> bool:
         return self.history is not None and self.history.dirty
@@ -277,11 +355,124 @@ class EditorWindow(QWidget):
     def save(self) -> None:
         if self._done or not self.can_save():
             return
-        request = self.build_job()
+        self.before_save()
+        choices = self.output_choices()
+        if choices:
+            target = self.ask_target(choices, self.default_format(), self.default_stem())
+            if target is None:
+                return
+            request = self.build_job(target)
+        else:
+            request = self.build_job()
         self.remember()
         self._done = True
         self.saved.emit(request)
         self.close()
+
+    def ask_target(
+        self,
+        choices: Sequence[OutputChoice],
+        format_id: str,
+        stem: str,
+        *,
+        title: str = "Save",
+        folder_output: bool = False,
+        accept_label: str = "Save",
+    ) -> SaveTarget | None:
+        """Ask for the name, format and folder of an output (the Save window)."""
+        source = self.selection.files[0].path
+        dialog = SaveDialog(
+            title,
+            source,
+            choices,
+            format_id=format_id,
+            stem=stem,
+            folder=source.parent,
+            folder_output=folder_output,
+            accept_label=accept_label,
+            parent=self,
+        )
+        try:
+            return self.run_save_dialog(dialog)
+        finally:
+            dialog.deleteLater()
+
+    def export(self, request: JobRequest) -> None:
+        """Hand a job over and stay open (an extra output, not the edited file)."""
+        self.remember()
+        self.saved.emit(request)
+
+    # --- modes --------------------------------------------------------------------------
+
+    def add_mode(self, mode: Mode) -> Mode:
+        index = len(self.modes)
+        self.modes.append(mode)
+        shortcut = f"Ctrl+{index + 1}" if index < 9 else ""
+        button = tool_button(
+            mode.label,
+            icon=mode.icon,
+            tip=f"{mode.tip}  {shortcut}" if shortcut else mode.tip,
+            checkable=True,
+        )
+        button.clicked.connect(lambda _c=False, key=mode.key: self.set_mode(key))
+        self._mode_group.addButton(button)
+        self.mode_bar.addWidget(button)
+        if index == 0:
+            self.toolbar.addStretch(1)  # tools of the whole editor go to the right
+        mode.button = button
+        if mode.toolbar is not None:
+            self.mode_tools.addWidget(mode.toolbar)
+        if mode.panel is not None:
+            self.mode_panels.addWidget(mode.panel)
+        if shortcut:
+            QShortcut(
+                QKeySequence(shortcut),
+                self,
+                lambda key=mode.key: self.set_mode(key),
+                context=Qt.ShortcutContext.WindowShortcut,
+            )
+        return mode
+
+    def mode_key(self, mode: Mode, sequence: str | QKeySequence, slot: Callable[[], Any]) -> None:
+        """A key that only works while ``mode`` is shown."""
+        keys = QKeySequence(sequence) if isinstance(sequence, str) else sequence
+        shortcut = QShortcut(keys, self, slot, context=Qt.ShortcutContext.WindowShortcut)
+        shortcut.setEnabled(self.mode is mode)
+        mode.shortcuts.append(shortcut)
+
+    def set_mode(self, key: str) -> None:
+        mode = next((m for m in self.modes if m.key == key), None)
+        if mode is None:
+            raise ValueError(f"unknown mode {key!r}")
+        old = self.mode
+        if old is not None and old is not mode:
+            self.leave_mode(old)
+        self.mode = mode
+        for other in self.modes:
+            for shortcut in other.shortcuts:
+                shortcut.setEnabled(other is mode)
+        if mode.button is not None:
+            mode.button.setChecked(True)
+        self.mode_tools.setVisible(mode.toolbar is not None)
+        if mode.toolbar is not None:
+            self.mode_tools.setCurrentWidget(mode.toolbar)
+        self.side_area.setVisible(mode.panel is not None)
+        self.mode_panels.setVisible(mode.panel is not None)
+        if mode.panel is not None:
+            self.mode_panels.setCurrentWidget(mode.panel)
+        if isinstance(self.canvas, ImageCanvas):
+            self.canvas.tool = mode.tool
+            self.canvas.unsetCursor()
+        self.set_hint(mode.hint)
+        self.mode_changed(old, mode)
+        if isinstance(self.canvas, ImageCanvas):
+            self.canvas.update()
+
+    def leave_mode(self, mode: Mode) -> None:
+        """``mode`` is about to be left (finish what is typed there)."""
+
+    def mode_changed(self, old: Mode | None, new: Mode) -> None:
+        """Another mode is shown: refresh the preview for it."""
 
     def undo(self) -> None:
         if self.history is not None and (state := self.history.undo()) is not None:
@@ -299,7 +490,7 @@ class EditorWindow(QWidget):
 
     def present(self) -> None:
         """Show the window centered on the screen under the pointer, sized to it."""
-        empty = self.toolbar.count() == 0  # editors with only a side panel
+        empty = self.toolbar.count() == 0 and not self.modes  # editors with only a side panel
         self.toolbar_area.setHidden(empty)
         self.toolbar_line.setHidden(empty)
         screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
@@ -390,6 +581,24 @@ def tool_button(
     if raised:
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     return button
+
+
+def toolbar_row() -> tuple[QWidget, QHBoxLayout]:
+    """A widget for a mode's toolbar row and its layout."""
+    widget = QWidget()
+    row = QHBoxLayout(widget)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(6)
+    return widget, row
+
+
+def side_panel() -> tuple[QWidget, QVBoxLayout]:
+    """A widget for a mode's side panel and its layout."""
+    widget = QWidget()
+    column = QVBoxLayout(widget)
+    column.setContentsMargins(0, 0, 0, 0)
+    column.setSpacing(8)
+    return widget, column
 
 
 def separator() -> QFrame:

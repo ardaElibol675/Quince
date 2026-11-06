@@ -547,8 +547,8 @@ the reason. `scripts/audit_routes.py` checks that every other one is a route.
 | From | To | Why |
 |------|----|-----|
 | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, PDF, all Document, all Slides, all Spreadsheet, all Subtitle, all Archive, all Code | all Audio, all Video | Only audio, video and animated GIFs hold sound or moving pictures; a document that reaches a GIF through its page images is no video. |
-| all Audio | GIF, all Video | A video needs a picture; Audio to video is a Phase 14 editor. |
-| all Audio, all Video | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, PDF, all Document, all Slides, all Spreadsheet, all Subtitle, all Archive, all Code | Audio and video hold no document text; pictures from a video are the animated GIF (a route) and snapshots (a Phase 14 editor). |
+| all Audio | GIF, all Video | A video needs a picture; the Sound Editor makes one (its Video mode). |
+| all Audio, all Video | JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, SVG, PDF, all Document, all Slides, all Spreadsheet, all Subtitle, all Archive, all Code | Audio and video hold no document text; pictures from a video are the animated GIF (a route) and Save Frames in the Video Editor. |
 | all Video | FLAC, OGG, Opus, AIFF, WMA | User decision (2026-11-04): a video's sound track as MP3, M4A or WAV only. |
 | GIF | all Audio, AVI, WMV | An animated GIF becomes a modern video (MP4, MOV, MKV, WebM); it has no sound. |
 | all Image | all Document, all Slides, all Spreadsheet, all Subtitle, all Code | An image holds no text; reading text from pictures (OCR) is not a format conversion. |

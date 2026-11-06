@@ -39,6 +39,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "quince.backends" = ["data/*.lua"]
 "quince.integrations" = ["data/*"]
+"quince.ui.theme" = ["icons/*.svg"]
 
 [tool.ruff]
 line-length = 100

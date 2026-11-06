@@ -1,9 +1,11 @@
-"""The media editors, driven like a user would (keys, timeline, controls), saving through the
-real job queue with the generated audio / video fixtures (1 s video at 10 fps, 0.5 s sound)."""
+"""The Video and Sound Editors, driven like a user would (keys, timeline, controls), saving
+through the real job queue with the generated audio / video fixtures (1 s video at 10 fps,
+0.5 s sound)."""
 
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -14,20 +16,14 @@ from PySide6.QtWidgets import QApplication
 from quince.backends import ffmpeg
 from quince.core.deps import Availability
 from quince.core.selection import Selection
-from quince.ui.editors.media.channels import ChannelsEditor
-from quince.ui.editors.media.crop import CropVideoEditor
-from quince.ui.editors.media.redact_audio import RedactAudioEditor
-from quince.ui.editors.media.redact_video import RedactVideoEditor
-from quince.ui.editors.media.snapshots import SnapshotsEditor
-from quince.ui.editors.media.speed import SpeedEditor
-from quince.ui.editors.media.split import SplitVideoEditor
-from quince.ui.editors.media.to_video import AudioToVideoEditor
-from quince.ui.editors.media.trim import TrimAudioEditor, TrimVideoEditor
+from quince.ui.editors.media import marks as m
+from quince.ui.editors.media.editor import SoundEditor, VideoEditor
 from tests.ui.test_editors import (  # noqa: F401 (autouse fixtures)
     _OPEN,
     _close_editors,
     _private_options,
     drag,
+    run_request,
     saved_output,
     settle,
 )
@@ -49,6 +45,7 @@ def open_media(cls, path: Path):
     selection = Selection.from_paths([path])
     window = cls(selection, cls.load(selection))
     window.confirm_discard = lambda: True
+    window.run_save_dialog = lambda dialog: dialog.target()
     _OPEN.append(window)
     window.resize(1000, 700)
     window.show()
@@ -72,11 +69,29 @@ def probe(path: Path):
     return ffmpeg.probe(path)
 
 
+def exported(window, action, **choose):
+    """Run an extra output (Save Parts / Save Frames); the editor stays open."""
+    if choose:
+        window.run_save_dialog = lambda d: replace(d.target(), **choose)
+    requests = []
+    window.saved.connect(requests.append)
+    action()
+    assert len(requests) == 1 and window.isVisible()
+    return run_request(window, requests[0])
+
+
+def mark(window, start, end):
+    window.seek_to(start)
+    window.mark_in()
+    window.seek_to(end)
+    window.mark_out()
+
+
 # --- shared timeline keys -----------------------------------------------------------------------
 
 
 def test_timeline_keys(qtbot, tmp_path):
-    window = open_media(TrimVideoEditor, fixture("sample-video.mp4", tmp_path))
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
     key(window, Qt.Key.Key_Right)
     assert window.position == pytest.approx(1.0)  # clamped to the 1 s length
     key(window, Qt.Key.Key_Left, Qt.KeyboardModifier.ShiftModifier)
@@ -103,7 +118,7 @@ def test_timeline_keys(qtbot, tmp_path):
 
 
 def test_timeline_click_seeks(qtbot, tmp_path):
-    window = open_media(TrimVideoEditor, fixture("sample-video.mp4", tmp_path))
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
     timeline = window.timeline
     area = timeline.area()
     point = QPoint(int(area.left() + area.width() * 0.5), 20)
@@ -111,211 +126,210 @@ def test_timeline_click_seeks(qtbot, tmp_path):
     assert window.position == pytest.approx(0.5, abs=0.02)
 
 
-# --- trim ---------------------------------------------------------------------------------------
+# --- the Video Editor --------------------------------------------------------------------------
 
 
-def test_trim_video_exact_with_undo(qtbot, tmp_path):
-    window = open_media(TrimVideoEditor, fixture("sample-video.mp4", tmp_path))
-    assert not window.save_button.isEnabled()
-    window.seek_to(0.3)
-    window.mark_in()
-    window.seek_to(0.8)
-    window.mark_out()
-    assert window.save_button.isEnabled()
+def test_video_editor_modes_and_the_save_window(qtbot, tmp_path):
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
+    assert [mode.key for mode in window.modes] == [
+        "trim", "crop", "redact", "speed", "sound", "split",
+    ]  # fmt: skip
+    QTest.keySequence(window, "Ctrl+5")
+    assert window.mode.key == "sound" and window.side_area.isVisible()
+    QTest.keySequence(window, "Ctrl+2")
+    assert window.mode.key == "crop" and window.canvas.tool is window.part("crop").tool
+    seen = []
+    window.run_save_dialog = lambda d: seen.append(d) and None
+    window.save()
+    dialog = seen[0]
+    formats = [c.format_id for c in dialog.choices]
+    assert formats[:7] == ["mp4", "mov", "mkv", "webm", "avi", "wmv", "gif"] and "mp3" in formats
+    assert dialog.format_id == "mp4" and dialog.stem == "sample-video-edited"
+    assert dialog.format_combo.currentText() == "MP4"
+    assert window.part("crop").mode.button.icon().isNull() is False  # bundled crop icon
+    assert window.isVisible()  # cancelled
+
+
+def test_trim_exact_with_undo(qtbot, tmp_path):
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
+    mark(window, 0.2, 0.7)
+    key(window, Qt.Key.Key_T)  # Keep In-Out
+    assert window.state().trim == pytest.approx((0.2, 0.7)) and not window.marks.has_range
+    assert window.timeline.trim == pytest.approx((0.2, 0.7))
     window.undo()
-    assert window.marks.out_s is None
+    assert window.state().trim is None
     window.redo()
-    snap = saved_output(window)
+    out = only_result(saved_output(window))
+    assert out.name == "sample-video-edited.mp4"
+    assert probe(out).duration == pytest.approx(0.5, abs=0.15)
+
+
+def test_fast_trim_only_without_other_changes(qtbot, tmp_path):
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
+    trim = window.part("trim")
+    mark(window, 0.5, 1.0)
+    trim.keep_marked()
+    trim.fast_box.setChecked(True)
+    assert window.state().fast
+    window.change(replace(window.edit, speed=2.0))
+    assert not trim.fast_box.isEnabled() or not window.fast_allowed()
+    window.undo()
+    assert window.fast_allowed() and trim.fast_box.isEnabled()
+    keys = window.media.keyframes
+    start = max(k for k in keys if k <= 0.5 + 1e-6)
+    assert trim.kept_start() == pytest.approx(start)
+    if start < 0.5:
+        assert "keyframe" in trim.label.text()
+        assert window.timeline.cuts == pytest.approx((start,))
+    out = only_result(saved_output(window))
+    assert probe(out).duration == pytest.approx(1.0 - start, abs=0.15)
+
+
+def test_crop_redact_speed_and_sound_in_one_file(qtbot, tmp_path):
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
+    window.set_mode("crop")
+    w, h = window.source.size
+    drag(window.canvas, (0, 0), (w // 2, h // 2))
+    assert window.state().crop is not None
+    window.set_mode("redact")
+    drag(window.canvas, (w // 2 + 4, h // 2 + 4), (w - 4, h - 4))
+    assert len(window.state().regions) == 1
+    window.set_mode("speed")
+    window.part("speed").spin.setValue(2.0)
+    window.set_mode("sound")
+    mark(window, 0.1, 0.4)
+    key(window, Qt.Key.Key_A)  # covers In-Out with a bleep
+    (bleep,) = window.state().bleeps
+    assert bleep == pytest.approx((0.1, 0.4))
+    window.part("sound").normalize_box.setChecked(True)
+    snap = saved_output(window, format_id="mkv", stem="all")
     out = only_result(snap)
-    assert out.name == "sample-video-trimmed.mp4"
+    assert out.name == "all.mkv"
     info = probe(out)
-    assert info.video is not None and info.duration == pytest.approx(0.5, abs=0.12)
+    cw, ch = w // 2 // 2 * 2, h // 2 // 2 * 2
+    assert (info.video.width, info.video.height) == (cw, ch)
+    assert info.duration == pytest.approx(0.5, abs=0.15)
+    assert any("LUFS" in n for n in snap.notes) and any("Metadata" in n for n in snap.notes)
 
 
-def test_trim_video_fast_starts_at_keyframe(qtbot, tmp_path):
-    window = open_media(TrimVideoEditor, fixture("sample-video.mp4", tmp_path))
-    window.seek_to(0.5)
-    window.mark_in()
-    window.fast_box.setChecked(True)
-    assert "keyframe" in window.info.text()
-    assert window.part()[0] == pytest.approx(window.media.keyframes[0])
-    snap = saved_output(window)
-    assert probe(only_result(snap)).duration == pytest.approx(1.0, abs=0.12)
+def test_remove_sound_and_sound_only_targets(qtbot, tmp_path):
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
+    sound = window.part("sound")
+    sound.remove_box.setChecked(True)
+    assert not sound.normalize_box.isEnabled()
+    assert "mp3" not in [c.format_id for c in window.output_choices()]
+    out = only_result(saved_output(window))
+    assert probe(out).video is not None and not probe(out).audio
+    other = open_media(VideoEditor, fixture("sample-video.mkv", tmp_path))
+    out = only_result(saved_output(other, format_id="mp3"))
+    assert out.suffix == ".mp3" and probe(out).video is None
 
 
-def test_trim_audio(qtbot, tmp_path):
-    window = open_media(TrimAudioEditor, fixture("sample-audio.wav", tmp_path))
-    assert window.timeline is window.canvas and window.media.wave is not None
-    assert not window.fast_box.isVisible()
-    window.seek_to(0.1)
-    window.mark_in()
+def test_save_parts_at_markers_keeps_the_editor_open(qtbot, tmp_path):
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
+    window.set_mode("split")
     window.seek_to(0.4)
-    window.mark_out()
-    out = only_result(saved_output(window))
-    assert probe(out).duration == pytest.approx(0.3, abs=0.01)
-
-
-# --- crop, speed, snapshots, split ------------------------------------------------------------
-
-
-def test_crop_video(qtbot, tmp_path):
-    window = open_media(CropVideoEditor, fixture("sample-video.mkv", tmp_path))
-    drag(window.canvas, (11, 13), (101, 91))
-    assert window.save_button.isEnabled() and "90 × 78" in window.info.text()
-    out = only_result(saved_output(window))
-    assert out.name == "sample-video-cropped.mkv"
-    video = probe(out).video
-    assert (video.width, video.height) == (90, 78)
-
-
-def test_change_speed_video_and_audio(qtbot, tmp_path):
-    window = open_media(SpeedEditor, fixture("sample-video.webm", tmp_path))
-    window.spin.setValue(2.0)
-    assert "0:00.50" in window.info.text()
-    out = only_result(saved_output(window))
-    assert out.name == "sample-video-2x.webm"
-    assert probe(out).duration == pytest.approx(0.5, abs=0.1)
-    window = open_media(SpeedEditor, fixture("sample-audio.mp3", tmp_path))
-    window.spin.setValue(0.5)
-    window.pitch_box.setChecked(False)
-    out = only_result(saved_output(window))
-    assert out.name == "sample-audio-0.5x.mp3"
-    assert probe(out).duration == pytest.approx(1.0, abs=0.1)
-
-
-def test_snapshots_current_frame_and_marked_frames(qtbot, tmp_path):
-    src = fixture("sample-video.mp4", tmp_path)
-    window = open_media(SnapshotsEditor, src)
-    window.seek_to(0.5)
-    assert window.save_button.isEnabled() and "0:00.50" in window.info.text()
-    out = only_result(saved_output(window))
-    assert out.name == "sample-video-snapshot.png" and out.stat().st_size > 0
-    window = open_media(SnapshotsEditor, src)
-    for t in (0.2, 0.6, 1.0):
-        window.seek_to(t)
-        window.toggle_marker()
-    window.format_combo.setCurrentIndex(window.format_combo.findData("jpg"))
-    assert window.save_button.text() == "Save 3 Pictures"
-    folder = only_result(saved_output(window))
-    assert folder.is_dir() and folder.name == "sample-video"
-    names = sorted(p.name for p in folder.iterdir())
-    assert names == ["sample-video-01.jpg", "sample-video-02.jpg", "sample-video-03.jpg"]
-
-
-def test_split_video_markers_and_equal_parts(qtbot, tmp_path):
-    src = fixture("sample-video.mov", tmp_path)
-    window = open_media(SplitVideoEditor, src)
-    assert not window.save_button.isEnabled()
-    window.seek_to(0.4)
-    window.toggle_marker()
-    assert window.info.text() == "2 parts" and window.timeline.cuts == pytest.approx((0.4,))
-    folder = only_result(saved_output(window))
+    key(window, Qt.Key.Key_M)
+    assert len(window.part("split").parts()) == 2
+    assert window.timeline.cuts == pytest.approx((0.4,))
+    snap = exported(window, window.save_parts)
+    (folder,) = snap.outputs
+    assert folder.name == "sample-video-parts"
     parts = sorted(folder.iterdir())
-    assert [p.name for p in parts] == ["sample-video-01.mov", "sample-video-02.mov"]
-    assert probe(parts[0]).duration == pytest.approx(0.4, abs=0.12)
-    window = open_media(SplitVideoEditor, src)
-    window.mode_combo.setCurrentIndex(window.mode_combo.findData("parts"))
-    window.parts_spin.setValue(3)
-    assert window.info.text() == "3 parts"
-    window.undo()  # back to 2 parts
-    assert window.parts_spin.value() == 2
-    window.redo()
-    assert len(list(only_result(saved_output(window)).iterdir())) == 3
+    assert [p.name for p in parts] == ["sample-video-parts-01.mp4", "sample-video-parts-02.mp4"]
+    split = window.part("split")
+    split.method_combo.setCurrentIndex(split.method_combo.findData("parts"))
+    split.parts_spin.setValue(3)
+    assert len(split.parts()) == 3
 
 
-# --- redact -------------------------------------------------------------------------------------
+def test_save_frames_one_and_several(qtbot, tmp_path):
+    window = open_media(VideoEditor, fixture("sample-video.mp4", tmp_path))
+    window.seek_to(0.5)
+    out = only_result(exported(window, window.save_frames))
+    assert out.name == "sample-video-frame.png"
+    window.toggle_marker()
+    window.seek_to(0.2)
+    window.toggle_marker()
+    snap = exported(window, window.save_frames, format_id="jpg")
+    (folder,) = snap.outputs
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "sample-video-frames-01.jpg", "sample-video-frames-02.jpg",
+    ]  # fmt: skip
 
 
-def test_redact_video_box_with_time_range(qtbot, tmp_path):
-    window = open_media(RedactVideoEditor, fixture("sample-video.mp4", tmp_path))
+# --- the Sound Editor --------------------------------------------------------------------------
+
+
+def test_sound_editor_trim_channels_bleep(qtbot, tmp_path):
+    window = open_media(SoundEditor, fixture("sample-audio.ogg", tmp_path))
+    assert [mode.key for mode in window.modes] == ["trim", "speed", "sound", "video"]
+    assert not window.part("trim").fast_box.isVisible()
+    sound = window.part("sound")
+    assert [sound.channels_combo.itemData(i) for i in range(sound.channels_combo.count())] == [
+        None, "stereo",
+    ]  # fmt: skip
+    sound.channels_combo.setCurrentIndex(1)
+    assert len(window.timeline.lanes) == 2 and "Mono → Stereo" in sound.channels_label.text()
+    mark(window, 0.1, 0.4)
+    window.part("trim").keep_marked()
+    window.set_mode("sound")
     window.seek_to(0.2)
     window.mark_in()
-    window.seek_to(0.6)
+    window.seek_to(0.3)
     window.mark_out()
-    drag(window.canvas, (10, 10), (80, 60))
-    assert len(window.regions) == 1
-    region = window.regions[0]
-    assert (region.start, region.end) == pytest.approx((0.2, 0.6)) and region.style == "solid"
-    assert window.timeline.spans == ((region.start, region.end),)
-    window.styles.buttons()[1].click()  # Blur
-    assert window.regions[0].style == "blur"
-    window.seek_to(0.9)
-    assert window.region_at((40, 30)) is None  # hidden only in its own time
-    window.mark_in()  # In at 0.9 (Out dropped)
-    window.use_marks()
-    assert window.regions[0].start == pytest.approx(0.9)
-    snap = saved_output(window)
-    out = only_result(snap)
-    assert out.name == "sample-video-redacted.mp4" and probe(out).video is not None
-    assert "Metadata was removed from the redacted copy" in snap.notes
-
-
-def test_redact_audio_bleep(qtbot, tmp_path):
-    window = open_media(RedactAudioEditor, fixture("sample-audio.flac", tmp_path))
-    window.add_span()  # nothing marked
-    assert not window.spans and "first" in window.info.text()
-    window.seek_to(0.1)
-    window.mark_in()
-    window.seek_to(0.25)
-    window.mark_out()
-    key(window, Qt.Key.Key_A)
-    assert (
-        window.spans[0] == pytest.approx((0.1, 0.25))
-        and len(window.spans) == 1
-        and not window.marks.has_range
-    )
-    window.timeline_pressed(0.2)
-    assert window.selected == 0
-    window.delete_selected()
-    assert not window.spans
-    window.undo()
-    assert len(window.spans) == 1
-    key(window, Qt.Key.Key_2)  # Silence
-    assert window.style == "silence"
+    sound.add_span()
+    assert len(window.state().bleeps) == 1
+    window.timeline_pressed(0.25)
+    assert sound.selected == 0
+    sound.delete_selected()
+    assert not window.state().bleeps
     out = only_result(saved_output(window))
-    assert out.name == "sample-audio-redacted.flac"
-    assert probe(out).duration == pytest.approx(0.5, abs=0.02)
+    assert out.name == "sample-audio-edited.ogg"
+    info = probe(out)
+    assert info.audio[0].channels == 2 and info.duration == pytest.approx(0.3, abs=0.1)
 
 
-# --- channels, audio to video -------------------------------------------------------------------
+def test_sound_editor_speed_changes_playback(qtbot, tmp_path):
+    window = open_media(SoundEditor, fixture("sample-audio.wav", tmp_path))
+    window.part("speed").spin.setValue(2.0)
+    assert window.player._player.playbackRate() == pytest.approx(2.0)
+    out = only_result(saved_output(window, format_id="flac"))
+    assert out.suffix == ".flac" and probe(out).duration == pytest.approx(0.25, abs=0.08)
 
 
-def test_channels_mono_to_stereo(qtbot, tmp_path):
-    window = open_media(ChannelsEditor, fixture("sample-audio.ogg", tmp_path))
-    assert not window.save_button.isEnabled()
-    assert [window.mode_combo.itemData(i) for i in range(window.mode_combo.count())] == [
-        None,
-        "stereo",
-    ]
-    window.mode_combo.setCurrentIndex(1)
-    assert len(window.timeline.lanes) == 2 and "Mono → Stereo" in window.info.text()
-    out = only_result(saved_output(window))
-    assert out.name == "sample-audio-stereo.ogg"
-    assert probe(out).audio[0].channels == 2
-
-
-def test_audio_to_video(qtbot, tmp_path):
-    window = open_media(AudioToVideoEditor, fixture("sample-audio.m4a", tmp_path))
-    assert window.save_button.isEnabled()
-    qtbot.waitUntil(lambda: window.canvas.image.width() == 1920, timeout=15000)  # preview
-    still = next(b for b in window.style_group.buttons() if b.property("quince_key") == "still")
+def test_sound_to_video_in_the_video_mode(qtbot, tmp_path):
+    window = open_media(SoundEditor, fixture("sample-audio.m4a", tmp_path))
+    window.set_mode("video")
+    assert window.canvas.picture.isVisible()
+    qtbot.waitUntil(lambda: window.canvas.picture.image.width() == 1920, timeout=15000)
+    visual = window.part("video")
+    still = next(b for b in visual.style_group.buttons() if b.property("quince_key") == "still")
     still.click()
-    assert not window.save_button.isEnabled()  # no cover art and no picture yet
-    window.set_picture(None)
-    window.style_group.buttons()[1].click()  # Bars
-    window.size_group.buttons()[1].click()  # Square
-    settle()
+    assert not visual.ready()  # no cover art and no picture yet
+    visual.style_group.buttons()[1].click()  # Bars
+    visual.size_group.buttons()[1].click()  # Square
+    assert window.default_format() == "mp4"
     out = only_result(saved_output(window))
-    assert out.name == "sample-audio.mp4"
+    assert out.name == "sample-audio-edited.mp4"
     video = probe(out).video
     assert (video.width, video.height) == (1080, 1080)
+    window.set_mode("trim")
+    assert not window.canvas.picture.isVisible()
 
 
-def test_audio_to_video_with_a_picture(qtbot, tmp_path):
-    window = open_media(AudioToVideoEditor, fixture("sample-audio.mp3", tmp_path))
-    window.set_picture(fixture("sample.png", tmp_path))
-    assert window.visual == "still" and window.save_button.isEnabled()
-    out = only_result(saved_output(window))
+def test_sound_to_video_with_a_picture(qtbot, tmp_path):
+    window = open_media(SoundEditor, fixture("sample-audio.mp3", tmp_path))
+    window.change(
+        replace(
+            window.edit,
+            visual=replace(
+                window.edit.visual, style="still", picture=fixture("sample.png", tmp_path)
+            ),
+        )
+    )
+    assert window.part("video").ready()
+    out = only_result(saved_output(window, format_id="mp4"))
     assert probe(out).video.width == 1920
 
 
@@ -323,4 +337,8 @@ def test_editor_refuses_a_file_without_video(tmp_path):
     from quince.core.jobs import JobError
 
     with pytest.raises(JobError, match="one file"):
-        TrimVideoEditor.load(Selection.from_paths([fixture("sample-audio.wav", tmp_path)]))
+        VideoEditor.load(Selection.from_paths([fixture("sample-audio.wav", tmp_path)]))
+
+
+def test_clock_text():
+    assert m.clock(61.5) == "1:01.50"

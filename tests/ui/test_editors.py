@@ -1,5 +1,5 @@
-"""The editor framework and the image editors, driven like a user would (mouse, keys,
-controls), saving through the real job queue."""
+"""The editor framework, the Save window and the Image Editor, driven like a user would
+(mouse, keys, controls), saving through the real job queue."""
 
 from __future__ import annotations
 
@@ -20,12 +20,9 @@ from quince.core.registry import discover as discover_operations
 from quince.core.selection import Selection
 from quince.ui.editors import manager
 from quince.ui.editors.base import History
-from quince.ui.editors.image.annotate import AnnotateEditor
 from quince.ui.editors.image.collage import CollageEditor
-from quince.ui.editors.image.crop import CropEditor
-from quince.ui.editors.image.edit import EditEditor
-from quince.ui.editors.image.frame import FrameEditor
-from quince.ui.editors.image.redact import RedactEditor
+from quince.ui.editors.image.editor import ImageEditorWindow
+from quince.ui.editors.save_dialog import OutputChoice, SaveDialog
 from quince.ui.runner import OperationRunner
 from tests.unit.test_jobs import wait_finished
 
@@ -62,6 +59,7 @@ def open_editor(qtbot, cls, paths):
     selection = Selection.from_paths(paths)
     window = cls(selection, cls.load(selection))
     window.confirm_discard = lambda: True
+    window.run_save_dialog = lambda dialog: dialog.target()  # Save with the defaults
     _OPEN.append(window)
     window.resize(1000, 700)
     window.show()
@@ -84,8 +82,23 @@ def run_request(window, request: JobRequest):
     return snap
 
 
-def saved_output(window):
-    """Press Save and run the job the editor emits; the snapshot."""
+def saved_output(window, **choose):
+    """Press Save (``choose``: format_id / stem / folder picked in the Save window), run the
+    job the editor emits; the snapshot."""
+    if choose:
+
+        def pick(dialog):
+            if "format_id" in choose:
+                dialog.format_combo.setCurrentIndex(
+                    dialog.format_combo.findData(choose["format_id"])
+                )
+            if "stem" in choose:
+                dialog.name_edit.setText(choose["stem"])
+            if "folder" in choose:
+                dialog.folder = choose["folder"]
+            return dialog.target()
+
+        window.run_save_dialog = pick
     requests = []
     window.saved.connect(requests.append)
     window.save()
@@ -163,17 +176,12 @@ def test_history_merge_back_to_start_is_no_step():
 
 def test_every_editor_operation_has_its_editor():
     editors = manager.discover()
-    assert set(editors) >= {
-        "image.crop", "image.edit", "image.frame", "image.annotate", "image.redact",
-        "image.collage", "video.trim", "audio.trim", "video.crop", "media.speed",
-        "video.split", "video.snapshots", "video.redact", "audio.channels", "audio.redact",
-        "audio.to_video",
-    }  # fmt: skip
+    assert set(editors) >= {"image.edit", "image.collage", "video.edit", "audio.edit"}
     named = {op.editor for op in discover_operations().operations(Kind.TOOL) if op.editor}
     assert named <= set(editors)
 
 
-def _editor_op(editor="image.crop"):
+def _editor_op(editor="image.edit"):
     return Operation("tool.x", Kind.TOOL, "X", "", Accepts(), editor=editor)
 
 
@@ -188,8 +196,8 @@ def test_manager_opens_and_submits(qtbot, tmp_path):
     )
     window = mgr.open(_editor_op(), Selection.from_paths([src]))
     _OPEN.append(window)
-    assert isinstance(window, CropEditor) and window.isVisible() and mgr.windows == [window]
-    window.set_box((0.0, 0.0, 100.0, 100.0))
+    assert isinstance(window, ImageEditorWindow) and window.isVisible() and mgr.windows == [window]
+    window.run_save_dialog = lambda dialog: dialog.target()
     window.save()
     assert [op_id for op_id, _r in submitted] == ["tool.x"]
     assert not errors
@@ -221,49 +229,93 @@ def test_runner_opens_editor_after_the_drag(tmp_path):
     assert opened == ["tool.x"]
 
 
+# --- the Save window ----------------------------------------------------------------------------
+
+
+def test_save_dialog_name_format_folder_and_free_names(qtbot, tmp_path):
+    src = photo(tmp_path / "a.jpg")
+    (tmp_path / "a-edited.png").touch()
+    other = tmp_path / "out"
+    other.mkdir()
+    choices = [OutputChoice("jpg"), OutputChoice("png", note="Lossless")]
+    dialog = SaveDialog(
+        "Save", src, choices, format_id="png", stem="a-edited", folder=tmp_path,
+        choose_folder=lambda start: other,
+    )  # fmt: skip
+    assert dialog.extension_label.text() == ".png" and dialog.note_label.text() == "Lossless"
+    assert [dialog.format_combo.itemText(i) for i in range(2)] == ["JPG", "PNG"]  # names only
+    assert "a-edited (1).png" in dialog.result_label.text()  # never overwritten
+    dialog.format_combo.setCurrentIndex(0)
+    assert dialog.extension_label.text() == ".jpg" and "Saved as" in dialog.result_label.text()
+    dialog.change_folder()
+    dialog.name_edit.setText("  holiday/1 ")
+    target = dialog.target()
+    assert (target.folder, target.stem, target.format_id) == (other, "holiday-1", "jpg")
+    dialog.name_edit.setText("   ")
+    assert not dialog.save_button.isEnabled()
+    dialog.deleteLater()
+
+
 # --- shared window behavior ---------------------------------------------------------------------
 
 
-def test_enter_saves_escape_asks_before_discarding(qtbot, tmp_path):
-    window = open_editor(qtbot, CropEditor, [photo(tmp_path / "a.png")])
-    assert not window.save_button.isEnabled()  # nothing changed yet
-    window.set_box((10.0, 10.0, 110.0, 60.0))
-    window.commit()
+def test_enter_opens_save_escape_asks_before_discarding(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    assert window.save_button.isEnabled()  # even unchanged: another format or place
+    window.adjust_part.rotate(1)
     asked = []
     window.confirm_discard = lambda: asked.append(True) or False
     QTest.keyClick(window.canvas, Qt.Key.Key_Escape)
     assert asked and window.isVisible()  # "Cancel" in the question keeps it open
-    requests = []
+    requests, dialogs = [], []
     window.saved.connect(requests.append)
+    window.run_save_dialog = lambda d: dialogs.append(d.target()) and None  # cancelled
+    QTest.keyClick(window.canvas, Qt.Key.Key_Return)
+    assert len(dialogs) == 1 and not requests and window.isVisible()
+    assert dialogs[0].stem == "a-edited" and dialogs[0].format_id == "png"
+    window.run_save_dialog = lambda d: d.target()
     QTest.keyClick(window.canvas, Qt.Key.Key_Return)
     assert len(requests) == 1 and not window.isVisible()
 
 
 def test_enter_in_a_number_field_does_not_save(qtbot, tmp_path):
-    window = open_editor(qtbot, CropEditor, [photo(tmp_path / "a.png")])
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
     requests = []
     window.saved.connect(requests.append)
-    window.width_spin.setFocus()
-    window.width_spin.lineEdit().selectAll()
-    QTest.keyClicks(window.width_spin.lineEdit(), "200")
-    QTest.keyClick(window.width_spin.lineEdit(), Qt.Key.Key_Return)
+    spin = window.crop_part.width_spin
+    spin.setFocus()
+    spin.lineEdit().selectAll()
+    QTest.keyClicks(spin.lineEdit(), "200")
+    QTest.keyClick(spin.lineEdit(), Qt.Key.Key_Return)
     assert not requests and window.isVisible()
-    assert window.state()[0] == (100, 0, 300, 300)  # 200 wide, around the middle
+    assert window.state().crop == (100, 0, 300, 300)  # 200 wide, around the middle
 
 
-def test_undo_redo_shortcuts(qtbot, tmp_path):
-    window = open_editor(qtbot, EditEditor, [photo(tmp_path / "a.png")])
-    window.rotate(1)
-    window.flip_h()
+def test_modes_keys_and_one_undo_history(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    assert window.mode.key == "crop"
+    QTest.keySequence(window, "Ctrl+2")
+    assert window.mode.key == "adjust" and window.side_area.isVisible()
+    QTest.keyClick(window, Qt.Key.Key_H)  # Mirror, in Adjust
+    assert window.state().adjust.flip_h
+    QTest.keySequence(window, "Ctrl+4")
+    assert window.mode.key == "annotate" and not window.side_area.isVisible()
+    QTest.keyClick(window, Qt.Key.Key_H)  # Highlighter, in Annotate
+    assert window.annotate_part.tool_name == "highlight" and window.state().adjust.flip_h
+    drag(window.canvas, (50, 50), (150, 120))
+    assert len(window.state().shapes) == 1
+    QTest.keySequence(window, "Ctrl+Z")  # undoes the drawing, then the mirror
+    assert not window.state().shapes and window.state().adjust.flip_h
     QTest.keySequence(window, "Ctrl+Z")
-    assert window.state().rotate == 1 and not window.state().flip_h
+    assert not window.state().adjust.flip_h
     QTest.keySequence(window, "Ctrl+Shift+Z")
-    assert window.state().flip_h
+    assert window.state().adjust.flip_h
 
 
 def test_compare_shows_original(qtbot, tmp_path):
-    window = open_editor(qtbot, EditEditor, [photo(tmp_path / "a.png")])
-    window.rotate(1)
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.set_mode("adjust")
+    window.adjust_part.rotate(1)
     settle()
     assert window.canvas.logical_size.width() == 300
     window.compare_button.toggle()
@@ -276,61 +328,77 @@ def test_compare_shows_original(qtbot, tmp_path):
 
 
 def test_crop_by_dragging_and_saving(qtbot, tmp_path):
-    window = open_editor(qtbot, CropEditor, [photo(tmp_path / "a.jpg", quality=95)])
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.jpg", quality=95)])
     drag(window.canvas, (50, 40), (250, 190))
-    box = window.state()[0]
+    box = window.state().crop
     assert box == pytest.approx((50, 40, 250, 190), abs=2)
-    assert window.save_button.isEnabled()
     drag(window.canvas, (150, 100), (180, 120))  # inside: moves it
-    moved = window.state()[0]
+    moved = window.state().crop
     assert moved[0] == pytest.approx(box[0] + 30, abs=2)
-    snap = saved_output(window)
-    (out,) = snap.outputs
-    assert out.name == "a-cropped.jpg"
+    (out,) = saved_output(window).outputs
+    assert out.name == "a-edited.jpg"
     with Image.open(out) as im:
         assert im.size == (moved[2] - moved[0], moved[3] - moved[1])
 
 
-def test_crop_ratio_shift_and_keys(qtbot, tmp_path):
-    window = open_editor(qtbot, CropEditor, [photo(tmp_path / "a.png")])
-    window.ratio_combo.setCurrentIndex(window.ratio_combo.findData("1:1"))
-    x0, y0, x1, y1 = window.state()[0]
+def test_crop_ratio_shift_keys_and_whole_picture(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    part = window.crop_part
+    part.ratio_combo.setCurrentIndex(part.ratio_combo.findData("1:1"))
+    x0, y0, x1, y1 = window.state().crop
     assert (x1 - x0, y1 - y0) == (300, 300)
-    window.ratio_combo.setCurrentIndex(window.ratio_combo.findData("free"))
+    part.ratio_combo.setCurrentIndex(part.ratio_combo.findData("free"))
     drag(window.canvas, (10, 10), (200, 60), modifiers=Qt.KeyboardModifier.ShiftModifier)
-    x0, y0, x1, y1 = window.state()[0]
+    x0, y0, x1, y1 = window.state().crop
     assert x1 - x0 == pytest.approx(y1 - y0, abs=2)  # Shift: a square
     window.canvas.setFocus()
     QTest.keyClick(window.canvas, Qt.Key.Key_Right, Qt.KeyboardModifier.ShiftModifier)
-    assert window.state()[0][0] == x0 + 10
+    assert window.state().crop[0] == x0 + 10
     window.undo()
-    assert window.state()[0][0] == x0
+    assert window.state().crop[0] == x0
+    part.reset_button.click()
+    assert window.state().crop is None
 
 
 def test_crop_click_without_drag_keeps_the_box(qtbot, tmp_path):
-    window = open_editor(qtbot, CropEditor, [photo(tmp_path / "a.png")])
-    window.set_box((100.0, 100.0, 200.0, 200.0))
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.crop_part.set_box((100.0, 100.0, 200.0, 200.0))
+    window.crop_part.commit()
     mouse(window.canvas, "press", (20, 20))
     mouse(window.canvas, "release", (20, 20))
-    assert window.state()[0] == (100, 100, 200, 200)
+    assert window.state().crop == (100, 100, 200, 200)
 
 
-# --- Edit ---------------------------------------------------------------------------------------
+def test_crop_box_is_shown_on_the_turned_picture(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.crop_part.set_box((0.0, 0.0, 100.0, 50.0))
+    window.crop_part.commit()
+    window.adjust_part.rotate(1)
+    settle()
+    assert window.canvas.logical_size.width() == 300  # the turned, uncropped picture
+    assert window.crop_part.box == pytest.approx((250, 0, 300, 100))
+    assert window.state().crop == (0, 0, 100, 50)  # kept in pixels of the original
 
 
-def test_edit_turn_resize_colors_and_save(qtbot, tmp_path):
+# --- Adjust -------------------------------------------------------------------------------------
+
+
+def test_adjust_turn_resize_colors_and_save(qtbot, tmp_path):
     exif = Image.Exif()
     exif[MAKE] = "Cam"
     src = photo(tmp_path / "a.jpg", color=(100, 100, 100), exif=exif.tobytes())
-    window = open_editor(qtbot, EditEditor, [src])
+    window = open_editor(qtbot, ImageEditorWindow, [src])
+    window.set_mode("adjust")
+    part = window.adjust_part
     QTest.keyClick(window, Qt.Key.Key_BracketRight)  # ] turns right
-    assert window.state().rotate == 1
-    assert (window.width_spin.value(), window.height_spin.value()) == (300, 400)
-    window.width_spin.setValue(150)  # proportions kept
-    assert window.state().size == (150, 200)
-    window.sliders["brightness"].slider.setValue(50)
-    assert window.state().brightness == 50
-    assert "300 × 400" not in window.info.text() and "150 × 200" in window.info.text()
+    assert window.state().adjust.rotate == 1
+    assert (part.width_spin.value(), part.height_spin.value()) == (300, 400)
+    part.width_spin.setValue(150)  # proportions kept
+    assert window.state().adjust.size == (150, 200)
+    part.sliders["brightness"].slider.setValue(50)
+    assert window.state().adjust.brightness == 50
+    settle()
+    assert "150 × 200" in window.info.text()
     (out,) = saved_output(window).outputs
     assert out.name == "a-edited.jpg"
     with Image.open(out) as im:
@@ -339,101 +407,14 @@ def test_edit_turn_resize_colors_and_save(qtbot, tmp_path):
         assert im.getexif().get(MAKE) == "Cam"
 
 
-def test_edit_reset_returns_to_the_original(qtbot, tmp_path):
-    window = open_editor(qtbot, EditEditor, [photo(tmp_path / "a.png")])
-    window.flip_v()
-    window.reset()
-    assert window.state() == imageedit.Adjust() and not window.save_button.isEnabled()
-
-
-# --- Frame --------------------------------------------------------------------------------------
-
-
-def test_frame_defaults_can_be_saved_and_settings_are_remembered(qtbot, tmp_path):
-    window = open_editor(qtbot, FrameEditor, [photo(tmp_path / "a.png")])
-    assert window.save_button.isEnabled()  # the first look is already a frame
-    window.padding.slider.setValue(10)
-    window.background.buttons[(0, 0, 0, 255)].click()
-    (out,) = saved_output(window).outputs
-    assert out.name == "a-framed.png"
-    with Image.open(out) as im:
-        assert im.size == (460, 360)
-        assert im.convert("RGB").getpixel((2, 2)) == (0, 0, 0)
-    again = open_editor(qtbot, FrameEditor, [photo(tmp_path / "b.png")])
-    assert again.state().padding == pytest.approx(0.1)
-    assert again.state().background == (0, 0, 0, 255)
-
-
-def test_frame_transparent_jpg_becomes_png(qtbot, tmp_path):
-    window = open_editor(qtbot, FrameEditor, [photo(tmp_path / "a.jpg")])
-    window.background.buttons[(0, 0, 0, 0)].click()
-    settle()
-    assert "PNG" in window.info.text()
-    snap = saved_output(window)
-    (out,) = snap.outputs
-    assert out.name == "a-framed.png" and imageedit.SAVED_AS_PNG_NOTE in snap.notes
-
-
-# --- Annotate -----------------------------------------------------------------------------------
-
-
-def test_annotate_draw_select_delete_and_save(qtbot, tmp_path):
-    window = open_editor(qtbot, AnnotateEditor, [photo(tmp_path / "a.png", color=(255, 255, 255))])
-    window.set_tool("rect")
-    drag(window.canvas, (50, 50), (150, 120))
-    window.set_tool("arrow")
-    drag(window.canvas, (200, 200), (350, 250))
-    assert [s.kind for s in window.state()] == ["rect", "arrow"]
-    mouse(window.canvas, "press", (60, 60))  # a click is not a shape
-    mouse(window.canvas, "release", (60, 60))
-    assert len(window.state()) == 2
-    window.set_tool("select")
-    mouse(window.canvas, "press", (50, 85))  # on the box's left edge
-    mouse(window.canvas, "release", (50, 85))
-    assert window.selected == 0
-    QTest.keyClick(window.canvas, Qt.Key.Key_Delete)
-    assert [s.kind for s in window.state()] == ["arrow"]
-    window.undo()
-    assert len(window.state()) == 2
-    (out,) = saved_output(window).outputs
-    assert out.name == "a-annotated.png"
-    with Image.open(out) as im:
-        assert im.getpixel((50, 85))[1] < 200  # the red box
-
-
-def test_annotate_text_entry(qtbot, tmp_path):
-    window = open_editor(qtbot, AnnotateEditor, [photo(tmp_path / "a.png")])
-    window.set_tool("text")
-    mouse(window.canvas, "press", (40, 40))
-    assert window.entry is not None
-    QTest.keyClicks(window.entry, "Hello")
-    requests = []
-    window.saved.connect(requests.append)
-    QTest.keyClick(window.entry, Qt.Key.Key_Return)  # finishes the text, does not save
-    assert not requests and window.entry is None
-    (shape,) = window.state()
-    assert shape.kind == "text" and shape.text == "Hello" and shape.points == ((40.0, 40.0),)
-    window.edit_text(0)
-    window.entry.setText("Changed")
-    QTest.keyClick(window.entry, Qt.Key.Key_Escape)  # drops the change
-    assert window.state()[0].text == "Hello"
-    window.set_tool("text")
-    mouse(window.canvas, "press", (200, 200))
-    QTest.keyClick(window.entry, Qt.Key.Key_Escape)  # an empty text is no shape
-    assert len(window.state()) == 1
-
-
-def test_annotate_color_applies_to_the_picked_shape(qtbot, tmp_path):
-    window = open_editor(qtbot, AnnotateEditor, [photo(tmp_path / "a.png")])
-    window.set_tool("line")
-    drag(window.canvas, (20, 20), (200, 20))
-    window.set_tool("select")
-    mouse(window.canvas, "press", (100, 20))
-    mouse(window.canvas, "release", (100, 20))
-    window.swatches.buttons[(30, 136, 229, 255)].click()
-    assert window.state()[0].color == (30, 136, 229)
-    window.undo()
-    assert window.state()[0].color == (229, 57, 53)
+def test_a_chosen_size_follows_a_new_crop(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.adjust_part.width_spin.setValue(200)  # half size: 200 x 150
+    window.crop_part.set_box((0.0, 0.0, 200.0, 300.0))
+    window.crop_part.commit()
+    assert window.state().adjust.size == (100, 150)
+    window.adjust_part.reset()
+    assert window.state().adjust == imageedit.Adjust()
 
 
 # --- Redact -------------------------------------------------------------------------------------
@@ -443,26 +424,177 @@ def test_redact_areas_styles_and_no_exif(qtbot, tmp_path):
     exif = Image.Exif()
     exif[MAKE] = "Cam"
     src = photo(tmp_path / "a.jpg", color=(250, 250, 250), exif=exif.tobytes(), quality=95)
-    window = open_editor(qtbot, RedactEditor, [src])
-    assert not window.save_button.isEnabled()
+    window = open_editor(qtbot, ImageEditorWindow, [src])
+    window.set_mode("redact")
+    part = window.redact_part
     drag(window.canvas, (20, 20), (120, 80))
-    assert [i.style for i in window.state()] == ["solid"]
-    window.styles.buttons()[1].click()  # Blur, for the picked area
-    assert [i.style for i in window.state()] == ["blur"]
-    window.styles.buttons()[0].click()
+    assert [i.style for i in window.state().redactions] == ["solid"]
+    QTest.keyClick(window, Qt.Key.Key_2)  # Blur, for the picked area
+    assert [i.style for i in window.state().redactions] == ["blur"]
+    part.styles.buttons()[0].click()
     drag(window.canvas, (200, 150), (300, 250))
-    assert len(window.state()) == 2
+    assert len(window.state().redactions) == 2
     QTest.keyClick(window.canvas, Qt.Key.Key_Delete)  # the new one is picked
-    assert len(window.state()) == 1
-    window.styles.buttons()[0].click()  # back to a black box
+    assert len(window.state().redactions) == 1
+    part.styles.buttons()[0].click()  # back to a black box
     snap = saved_output(window)
     (out,) = snap.outputs
-    assert out.name == "a-redacted.jpg"
     with Image.open(out) as im:
         assert max(im.getpixel((60, 50))) < 20
         assert min(im.getpixel((300, 200))) > 230
         assert MAKE not in im.getexif()
     assert any("EXIF" in note for note in snap.notes)
+
+
+def test_redacted_area_stays_on_the_content_when_turned(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.set_mode("redact")
+    drag(window.canvas, (0, 0), (40, 30))
+    window.adjust_part.rotate(1)  # 300 x 400 now; the top-left corner is at the top right
+    (item,) = window.redact_part.items
+    assert item.box == pytest.approx((270, 0, 300, 40), abs=1)
+    (out,) = saved_output(window).outputs
+    with Image.open(out) as im:
+        assert im.size == (300, 400)
+        assert max(im.getpixel((290, 10))[:3]) < 20 and im.getpixel((10, 10))[2] > 150
+
+
+# --- Annotate -----------------------------------------------------------------------------------
+
+
+def test_annotate_draw_select_delete_and_save(qtbot, tmp_path):
+    src = photo(tmp_path / "a.png", color=(255, 255, 255))
+    window = open_editor(qtbot, ImageEditorWindow, [src])
+    window.set_mode("annotate")
+    part = window.annotate_part
+    part.set_tool("rect")
+    drag(window.canvas, (50, 50), (150, 120))
+    part.set_tool("arrow")
+    drag(window.canvas, (200, 200), (350, 250))
+    assert [s.kind for s in window.state().shapes] == ["rect", "arrow"]
+    mouse(window.canvas, "press", (60, 60))  # a click is not a shape
+    mouse(window.canvas, "release", (60, 60))
+    assert len(window.state().shapes) == 2
+    part.set_tool("select")
+    mouse(window.canvas, "press", (50, 85))  # on the box's left edge
+    mouse(window.canvas, "release", (50, 85))
+    assert part.selected == 0
+    QTest.keyClick(window.canvas, Qt.Key.Key_Delete)
+    assert [s.kind for s in window.state().shapes] == ["arrow"]
+    window.undo()
+    assert len(window.state().shapes) == 2
+    (out,) = saved_output(window).outputs
+    with Image.open(out) as im:
+        assert im.getpixel((50, 85))[1] < 200  # the red box
+
+
+def test_annotate_text_entry(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.set_mode("annotate")
+    part = window.annotate_part
+    part.set_tool("text")
+    mouse(window.canvas, "press", (40, 40))
+    assert part.entry is not None
+    QTest.keyClicks(part.entry, "Hello")
+    requests = []
+    window.saved.connect(requests.append)
+    QTest.keyClick(part.entry, Qt.Key.Key_Return)  # finishes the text, does not save
+    assert not requests and part.entry is None
+    (shape,) = window.state().shapes
+    assert shape.kind == "text" and shape.text == "Hello"
+    assert shape.points[0] == pytest.approx((40.0, 40.0))
+    part.edit_text(0)
+    part.entry.setText("Changed")
+    QTest.keyClick(part.entry, Qt.Key.Key_Escape)  # drops the change
+    assert window.state().shapes[0].text == "Hello"
+    part.set_tool("text")
+    mouse(window.canvas, "press", (200, 200))
+    QTest.keyClick(part.entry, Qt.Key.Key_Escape)  # an empty text is no shape
+    assert len(window.state().shapes) == 1
+    mouse(window.canvas, "press", (100, 200))
+    QTest.keyClicks(part.entry, "Kept")
+    window.set_mode("frame")  # leaving the mode keeps the text
+    assert [s.text for s in window.state().shapes] == ["Hello", "Kept"]
+
+
+def test_annotate_color_applies_to_the_picked_shape(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.set_mode("annotate")
+    part = window.annotate_part
+    part.set_tool("line")
+    drag(window.canvas, (20, 20), (200, 20))
+    part.set_tool("select")
+    mouse(window.canvas, "press", (100, 20))
+    mouse(window.canvas, "release", (100, 20))
+    part.swatches.buttons[(30, 136, 229, 255)].click()
+    assert window.state().shapes[0].color == (30, 136, 229)
+    window.undo()
+    assert window.state().shapes[0].color == (229, 57, 53)
+
+
+# --- Frame --------------------------------------------------------------------------------------
+
+
+def test_frame_is_off_until_added_and_settings_are_remembered(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
+    window.set_mode("frame")
+    part = window.frame_part
+    assert window.state().frame is None
+    part.padding.slider.setValue(10)  # changing a setting adds the frame
+    part.background.buttons[(0, 0, 0, 255)].click()
+    assert window.state().frame.padding == pytest.approx(0.1)
+    (out,) = saved_output(window).outputs
+    with Image.open(out) as im:
+        assert im.size == (460, 360)
+        assert im.convert("RGB").getpixel((2, 2)) == (0, 0, 0)
+    again = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "b.png")])
+    again.frame_part.enabled_box.setChecked(True)
+    assert again.state().frame.padding == pytest.approx(0.1)
+    assert again.state().frame.background == (0, 0, 0, 255)
+
+
+def test_transparent_result_defaults_to_png_and_jpg_gets_white(qtbot, tmp_path):
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.jpg")])
+    window.frame_part.enabled_box.setChecked(True)
+    window.frame_part.background.buttons[(0, 0, 0, 0)].click()
+    seen = []
+    window.run_save_dialog = lambda d: seen.append(d) and None
+    window.save()
+    dialog = seen[0]
+    assert dialog.format_id == "png"
+    dialog.format_combo.setCurrentIndex(dialog.format_combo.findData("jpg"))
+    assert "white" in dialog.note_label.text()
+    snap = saved_output(window, format_id="jpg", stem="framed")
+    (out,) = snap.outputs
+    assert out.name == "framed.jpg" and any("white" in n for n in snap.notes)
+
+
+# --- everything at once -------------------------------------------------------------------------
+
+
+def test_every_mode_in_one_file_with_a_chosen_name_format_and_folder(qtbot, tmp_path):
+    src = photo(tmp_path / "a.png", color=(255, 255, 255))
+    folder = tmp_path / "out"
+    folder.mkdir()
+    window = open_editor(qtbot, ImageEditorWindow, [src])
+    window.crop_part.set_box((0.0, 0.0, 200.0, 300.0))
+    window.crop_part.commit()
+    window.set_mode("adjust")
+    window.adjust_part.rotate(1)  # 300 x 200
+    window.set_mode("redact")
+    drag(window.canvas, (0, 0), (50, 50))
+    window.set_mode("annotate")
+    window.annotate_part.set_tool("rect")
+    drag(window.canvas, (150, 100), (250, 180))
+    window.set_mode("frame")
+    window.frame_part.enabled_box.setChecked(True)
+    snap = saved_output(window, format_id="webp", stem="all", folder=folder)
+    (out,) = snap.outputs
+    assert out == folder / "all.webp"
+    with Image.open(out) as im:
+        pad = round(0.06 * 200)
+        assert im.size == (300 + 2 * pad, 200 + 2 * pad)
+        assert max(im.convert("RGB").getpixel((pad + 20, pad + 20))) < 30  # redacted
 
 
 # --- Collage ------------------------------------------------------------------------------------
@@ -500,7 +632,7 @@ def test_collage_needs_two_images(tmp_path):
 
 def test_widget_methods_are_not_shadowed(qtbot, tmp_path):
     """Editors must not hide QWidget.size() / style() / width() behind attributes."""
-    window = open_editor(qtbot, FrameEditor, [photo(tmp_path / "a.png")])
+    window = open_editor(qtbot, ImageEditorWindow, [photo(tmp_path / "a.png")])
     assert window.size().width() == 1000 and window.width() == 1000
     assert window.style() is not None
     assert isinstance(window.pos(), QPoint)

@@ -44,7 +44,7 @@ _TOOLS = (
     ("Annotate", "document-edit"),
     ("Redact", "edit-clear"),
     ("Frame", "insert-image"),
-    ("Collage", "view-grid"),
+    ("Collage", "quince-collage"),
     ("Merge PDFs", "document-new"),
     ("Split PDF", "edit-cut"),
     ("Extract", "folder-open"),

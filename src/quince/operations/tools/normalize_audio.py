@@ -1,4 +1,5 @@
-"""Normalize audio: even loudness (-16 LUFS, EBU R128) for audio files and video sound."""
+"""Normalize audio: even loudness (-16 LUFS, EBU R128) for several audio files or videos at
+once (one file is normalized in the Video or Sound Editor)."""
 
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ OPERATION = Operation(
     label="Normalize",
     title="Normalize loudness (-16 LUFS)",
     icon="audio-volume-high",
-    accepts=Accepts(categories=frozenset({Category.AUDIO, Category.VIDEO})),
+    accepts=Accepts(categories=frozenset({Category.AUDIO, Category.VIDEO}), min_items=2),
     requires=MEDIA_DEPS,
     order=40,
     run=lambda ctx: each_file(ctx, _one),

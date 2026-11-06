@@ -25,6 +25,7 @@ from quince.ui.dialogs.options import FormDialog
 from quince.ui.dialogs.order import OrderDialog
 from quince.ui.dialogs.report import ReportDialog
 from quince.ui.feedback.toast import Toast
+from quince.ui.theme.icons import themed
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def icon_for(name: str) -> QIcon:
         return QIcon(name)
     if name.endswith(_ICON_SUFFIXES):
         name = name.rsplit(".", 1)[0]
-    return QIcon.fromTheme(name)
+    return themed(name)
 
 
 def _standard_places() -> list[Path]:

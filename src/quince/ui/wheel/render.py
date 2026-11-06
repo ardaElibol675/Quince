@@ -7,7 +7,6 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetricsF,
-    QIcon,
     QPainter,
     QPainterPath,
     QPen,
@@ -16,6 +15,7 @@ from PySide6.QtGui import (
 )
 
 from quince.ui.theme.colors import WheelColors
+from quince.ui.theme.icons import themed
 from quince.ui.wheel.geometry import WheelLayout, point_on_circle
 from quince.ui.wheel.model import WHEEL_TITLES, WheelContent
 
@@ -63,7 +63,7 @@ class WheelPainter:
     def _icon(self, name: str, size: int, dpr: float) -> QPixmap | None:
         key = (name, size, dpr)
         if key not in self._icons:
-            icon = QIcon.fromTheme(name)
+            icon = themed(name)
             if icon.isNull():
                 self._icons[key] = None
             else:

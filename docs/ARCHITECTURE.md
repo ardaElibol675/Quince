@@ -186,7 +186,7 @@ Registry.query(selection, kind, available=..., prefs=...) ──▶ the wheel's 
   5. Config: disabled ids are dropped; ids in `order` come first, the rest keep the default
      order (`Operation.order`, then label).
 - `Registry.unavailable()` lists what missing dependencies hide, per route for Convert. It
-  feeds `quince doctor` now and the Settings window later (Phase 16).
+  feeds `quince doctor` now and the Settings window later (Phase 17).
 
 ### File type detection
 
@@ -858,11 +858,11 @@ were not recorded and cannot appear.
 
 ### Desktop integration (`integrations/install.py`, `quince integrate`)
 
-Writes into the user's `~/.local/share` (no root; the `.deb` of Phase 17 installs the same
+Writes into the user's `~/.local/share` (no root; the `.deb` of Phase 18 installs the same
 files system-wide):
 - `applications/quince.desktop`: "Quince" (`Exec=<venv python> -m quince home`) with the
   actions Library and Quit Quince; `StartupWMClass=quince` matches the window.
-- `icons/hicolor/scalable/apps/quince.svg`: a provisional icon (Phase 17 finalizes it); the
+- `icons/hicolor/scalable/apps/quince.svg`: a provisional icon (Phase 18 finalizes it); the
   same file is the window and tray icon.
 - `nautilus-python/extensions/quince_nautilus.py`: a `MenuProvider` with "Open in Quince" for
   local files and folders. It runs inside Nautilus (system Python, `python3-nautilus`), never
@@ -886,8 +886,8 @@ tray the service logs it and runs on; the app menu entry covers the same command
 |------------|--------|---------|-----|
 | Compress | `tools/compress.py` → `backends/compress.py` | JPG, PNG, WebP, HEIC, AVIF, TIFF, GIF; MP3, M4A, OGG, Opus, WMA; videos; PDF | options dialog, then a job |
 | Metadata | `tools/metadata.py` → `backends/metadata.py` | the images above, audio, video, PDF | report window; "Save copy without metadata" → job |
-| Remove Audio | `tools/remove_audio.py` → `backends/mediatools.py` | videos | job (stream copy) |
-| Normalize | `tools/normalize_audio.py` → `backends/mediatools.py` | audio, videos | job (two-pass loudnorm) |
+| Remove Audio | `tools/remove_audio.py` → `backends/mediatools.py` | ≥ 2 videos (one: Video Editor) | job (stream copy) |
+| Normalize | `tools/normalize_audio.py` → `backends/mediatools.py` | ≥ 2 audio files or videos (one: the editors) | job (two-pass loudnorm) |
 | Extract | `tools/extract_archive.py` → `backends/archive.py` | archives (7Z needs `7z`, RAR `unrar`) | job |
 | Join | `tools/join_videos.py` → `backends/mediatools.py` | ≥ 2 videos | order dialog, then a job |
 | Merge PDFs | `tools/merge_pdfs.py` → `backends/pdftools.py` | ≥ 2 PDFs | order dialog, then a job |
@@ -1028,7 +1028,7 @@ through DOCX and LibreOffice, since pandoc's ODT writer does not highlight code.
 
 ---
 
-## Editors and image editors (Phase 13)
+## Editors (Phases 13–15)
 
 ### Flow
 
@@ -1037,51 +1037,85 @@ wheel chosen ──▶ OperationRunner.run(op, selection)
                    └─ op.editor → controller.after_drag(...) → EditorManager.open(op, selection)
                         ├─ Editor.load(selection)      off the GUI thread (decoding)
                         ├─ window.present()            non-modal; several may be open
-                        └─ Save → window.saved(JobRequest) → runner.submit_request → JobQueue
+                        └─ Save → Save window → window.saved(JobRequest)
+                                   → runner.submit_request → JobQueue
 ```
 
-- `ui/editors/manager.py`: `discover()` finds every module in `quince.ui.editors.image` (more
-  packages later) that defines `EDITOR`, keyed by its `name`; `Operation.editor` names it. A
-  load failure (`JobError`) is an error toast; a missing editor name too.
-- `ui/editors/base.py` `EditorWindow`: toolbar row (hidden when empty), canvas, optional side
-  panel, bottom bar (hint, info, Original / Preview toggle, Cancel, Save). Shared keys: Enter /
-  Ctrl+S save (Enter in a number field only applies it), Esc closes (asks "Discard your
-  changes?" when something changed), Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, `\` compare.
-  `History` keeps immutable editor states; pushes with the same `merge` key within 0.8 s (a
-  slider drag, arrow-key nudges) are one undo step. "Changed?" is `state != initial state`.
-- An editor implements `load`, `state` / `set_state`, `build_job`, optionally `can_save`,
-  `compare_image`, `remember` (settings kept via `forms.save_section` in
-  `~/.local/state/quince/tool-options.json`).
-- `ui/editors/canvas.py` `ImageCanvas`: shows a preview `QImage` stretched over the result's
-  *logical* size (original pixels), fitted with a margin (at most 4x for tiny images), and hands
-  mouse / key events to a `CanvasTool` in original-pixel coordinates. `rects.py` (pure box
-  geometry: handles, move, resize with ratio, fit) and `boxes.py` (box gestures and drawing)
-  are shared by Crop and Redact.
+One **Edit** operation per category opens one combined editor: `tool.edit_image` →
+`image.edit`, `tool.edit_video` → `video.edit`, `tool.edit_audio` → `audio.edit` (one file
+each). Collage (`image.collage`, 2–60 images) stays an editor of its own; Normalize and Remove
+audio stay direct tools for 2+ files (`Accepts.min_items=2`).
 
-### Same function for preview and result
+- `ui/editors/manager.py`: `discover()` finds every module in `quince.ui.editors.image` and
+  `quince.ui.editors.media` that defines `EDITOR` or `EDITORS`, keyed by `name`;
+  `Operation.editor` names it. Modules starting with `_` (the modes) are skipped. A load
+  failure (`JobError`) is an error toast; a missing editor name too.
+- `ui/editors/base.py` `EditorWindow`: toolbar (mode buttons, then the editor's own tools on
+  the right; the current mode's row below them), canvas, side panel, bottom bar (hint, info,
+  Original toggle, Cancel, Save). Shared keys: Enter / Ctrl+S save (Enter in a number field
+  only applies it), Esc closes (asks "Discard your changes?" when something changed),
+  Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, `\` compare, Ctrl+1 … Ctrl+9 modes.
+- **Modes** (`Mode`, `add_mode`, `set_mode`): each has a button, an optional toolbar row and
+  side panel, a canvas tool, and keys registered with `mode_key` that are only enabled while
+  it is shown (Annotate's `H` is the highlighter, Adjust's `H` mirrors). Each mode is a "part"
+  object in a `_`-module that reads and changes the editor's one immutable edit through
+  `editor.change(edit, merge=..., record=...)` and refreshes its controls in `sync()`.
+- `History` keeps the immutable edit; pushes with the same `merge` key within 0.8 s (a slider
+  drag, arrow-key nudges) are one undo step; one history covers every mode.
+- **Save window** (`ui/editors/save_dialog.py`): name without extension (`name-edited`),
+  format (`output_choices()`, each with a note on what it loses), folder (the source's;
+  "Change…" opens the destination chooser with the recent folders of `core/recent.py`). It
+  shows the free name that will be used (`name (1).ext`); `JobContext.new_output(name=...,
+  target_dir=...)` reserves it the same way (`naming.output_path(stem=...)`). `export()`
+  hands over an extra job without closing the editor (Save Parts, Save Frames).
+- `ui/editors/canvas.py` `ImageCanvas`: shows a preview `QImage` stretched over a *logical*
+  size (original pixels) and hands mouse / key events to the mode's `CanvasTool` in those
+  coordinates. `rects.py` (pure box geometry) and `boxes.py` (box gestures and drawing) are
+  shared by every box tool (crop, redact, video areas).
 
-Editors describe the result as data and apply one function both to a preview (longer side
-1600 px) and, in the job, to the full image:
+### Image Editor (`ui/editors/image/editor.py`, `backends/imagepipeline.py`)
 
-| Editor | State | Function (backend) | Output |
-|--------|-------|--------------------|--------|
-| Crop | box (original px), ratio | `imageedit.crop` | `name-cropped` |
-| Edit | `Adjust` (quarter turns, mirrors, size, brightness / contrast / saturation) | `imageedit.adjust` | `name-edited` |
-| Frame | `FrameStyle` (padding, background, radius, shadow as fractions of the shorter side) | `imageedit.frame` | `name-framed` |
-| Annotate | `Shape` list (pen, highlighter, line, arrow, box, ellipse, text) | `painting.annotate` (QPainter) | `name-annotated` |
-| Redact | `Redaction` list (box + solid / blur / pixelate) | `imageedit.redact` | `name-redacted` |
-| Collage | order, `CollageStyle`, width | `collage.render` | `first-collage` |
+The edit is one `ImageEdit`: crop box, `Adjust` (quarter turns, mirrors, final size,
+brightness / contrast / saturation), `Redaction` list, `Shape` list, `FrameStyle` or None.
+`imagepipeline.render` applies it in one order — crop → turn / mirror → colors → redact →
+annotate → resize → frame — to the preview (longer side 1600 px, every box and stroke scaled
+down) and, in the job, to the full image, so the result looks like the preview.
 
-Sizes that must look alike at every scale are fractions (frame padding, blur strength, pixel
-blocks per area), so the preview matches. Annotations are painted with QPainter on a `QImage`
-in the job too (antialiased, same font as on screen); painting on a QImage is allowed off the
-GUI thread.
+Boxes and shapes are kept in pixels of the upright original. `Geometry` (crop + turns +
+mirrors) maps them forward when the picture is made and the editor maps mouse positions back,
+so a later crop or turn keeps them on the same content; texts stay upright (their middle is
+mapped), parts outside the crop are cut off. A chosen final size follows a new crop at the
+same scale. The preview of each mode leaves steps out: Crop shows the whole turned picture
+with the box, Redact and Annotate the cropped picture without the frame (Annotate draws the
+shapes as an overlay), Adjust and Frame the full result.
 
-### Saving (`imageedit.save_edited`)
+Saving (`imageedit.save_edited`) writes the chosen format; the default is the source's (SVG →
+PNG; a result with transparency the source format cannot keep → PNG). A format without alpha
+gets white behind transparency, with a note. Animated GIF / WebP: every frame goes through the
+pipeline. EXIF (without orientation) and the color profile are kept; a redacted picture has no
+EXIF. Pixels are edited as 8-bit RGB(A).
 
-Same format as the source; SVG → PNG (rendered with `rsvg-convert`); a transparent result whose
-format has no alpha (a JPG framed on a transparent background) → PNG with a note. Animated GIF
-/ WebP: every frame goes through the function. EXIF orientation is applied first; EXIF (without
-orientation; Pillow never writes the IFD1 thumbnail) and the color profile are kept. Redact
-drops EXIF (maker notes may hold a preview). Pixels are edited as 8-bit RGB(A).
+### Video and Sound Editors (`ui/editors/media/editor.py`, `backends/mediapipeline.py`)
 
+The edit is one `MediaEdit`: trim (+ fast), crop, `Region` list (areas with a time range),
+speed (+ keep pitch), channels, bleeps (+ bleep / silence), normalize, remove audio, `Visual`
+(the Sound Editor's video picture). In / Out and the markers are a selection the modes use
+(Trim keeps In–Out, Bleep and Redact take it, Split and Save Frames use the markers).
+
+`mediapipeline.edit_args` builds one ffmpeg command: the trim as `-ss` / `-t`; the picture
+through redact → crop → speed (GIF: its palette) unless nothing changes it and the container
+can store the codec (then copied); every sound track through channels (first track only) →
+bleeps → speed → loudnorm, copied when nothing changes it. Times are seconds of the source,
+moved to the trimmed part. Normalize first runs `measure_args` per track. A fast trim (copy
+everything, start at the keyframe at or before In) is only possible when nothing else changes
+and the format stays. Targets: every video format, GIF, MP3 / M4A / WAV for a video; every
+sound format and MP4 (from `Visual`: waveform, bars, spectrum or still picture, made from the
+edited sound) for a sound. Speed changes drop subtitles; redacted copies have no metadata.
+
+Save Parts writes every part (`part_spans`: markers inside the trim, N equal parts, or every
+X s) through the same pipeline into a folder; Save Frames writes PNG / JPG pictures with the
+crop and the areas redacted at that time (`frame_args`).
+
+Playback is QtMultimedia (`ui/editors/media/player.py`). Its FFmpeg backend stalls when muted
+right after a seek or when `setPosition` is called again from inside its own status signal, so
+muting is applied a moment after the last seek and the seek after loading is queued.

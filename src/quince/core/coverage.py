@@ -124,13 +124,13 @@ EXCLUSIONS: tuple[Exclusion, ...] = (
     Exclusion(
         ids(_A),
         (*ids(_V), "gif"),
-        "A video needs a picture; Audio to video is a Phase 14 editor.",
+        "A video needs a picture; the Sound Editor makes one (its Video mode).",
     ),
     Exclusion(
         ids(_A, _V),
         but(ALL, *MEDIA),
         "Audio and video hold no document text; pictures from a video are the animated "
-        "GIF (a route) and snapshots (a Phase 14 editor).",
+        "GIF (a route) and Save Frames in the Video Editor.",
     ),
     Exclusion(
         ids(_V),

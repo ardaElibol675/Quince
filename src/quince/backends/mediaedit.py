@@ -1,29 +1,18 @@
-"""The work of the media editors (trim, split, crop, speed, snapshots, redact, channels, audio
-to video) with ffmpeg.
+"""The pieces of the Video and Sound Editors' work with ffmpeg: reading a file for an editor
+(streams, keyframes, waveform), and the filters and encoder arguments that
+``quince.backends.mediapipeline`` puts together into one command (redacted areas, channels,
+bleeps, speed, split points, the picture of a sound) plus the Video mode's preview.
 
-The argument builders are pure, so the rules are unit tested without running ffmpeg; the
-``run_*``-style functions below them run one job.
-
-Rules:
-
-- **Same format out.** An edited file keeps its container; whatever is encoded uses the
-  container's own preset from ``quince.backends.media`` (H.264 CRF 20 for MP4/MOV/MKV, ...).
-- **Exact or fast cuts.** An exact cut (the default) encodes the picture and the sound so both
-  start on the chosen time (a copied sound would start at an earlier packet and run ahead of
-  the picture); subtitles are copied. A fast cut copies every stream and starts at the
-  keyframe at or before the chosen time. Audio files are copied when the codec is lossy
-  (cut at its frame boundaries, no quality loss) and encoded when lossless (exact, still
-  lossless).
-- **Tracks.** Videos keep every audio track and the subtitles the container can store as they
-  are; audio files keep the first track and their cover art.
-- **Times** are seconds from the start of the file, as the editor's player shows them.
+The builders are pure, so the rules are unit tested without running ffmpeg. Whatever is
+encoded uses the target container's own preset from ``quince.backends.media`` (H.264 CRF 20
+for MP4/MOV/MKV, ...). Times are seconds from the start of the file, as the editor's player
+shows them.
 """
 
 from __future__ import annotations
 
 import bisect
 import contextlib
-import itertools
 import json
 import math
 import sys
@@ -45,7 +34,6 @@ from quince.backends.media import (
 )
 from quince.core.jobs import JobContext, JobError
 
-LOSSLESS_AUDIO = frozenset({"wav", "flac", "aiff"})
 MIN_PART_S = 0.1  # shorter parts are not made
 MAX_PARTS = 500
 WAVE_RATE = 4000  # samples per second decoded for the waveform
@@ -230,18 +218,6 @@ def encode_video(format_id: str) -> list[str]:
     return list(VIDEO_ENCODERS[VIDEO_TARGETS[format_id].video_encoder])
 
 
-def _subtitle_maps(info: MediaInfo, format_id: str) -> list[str]:
-    """Subtitles that can be copied into the same container unchanged."""
-    target = VIDEO_TARGETS[format_id].subtitles
-    keep = [
-        s for s in info.subtitles if target == "copy" or (target is not None and s.codec == target)
-    ]
-    args: list[str] = []
-    for s in keep:
-        args += ["-map", f"0:{s.index}"]
-    return [*args, "-c:s", "copy"] if keep else args
-
-
 def _attachment_maps(info: MediaInfo, format_id: str) -> list[str]:
     if not VIDEO_TARGETS[format_id].attachments:
         return []
@@ -252,31 +228,11 @@ def _attachment_maps(info: MediaInfo, format_id: str) -> list[str]:
     return [*args, "-c:t", "copy"] if found else args
 
 
-def video_maps(info: MediaInfo, format_id: str, *, subtitles: bool = True) -> list[str]:
-    """The main video, every audio track and (``subtitles``) what the container keeps."""
-    video = info.video
-    if video is None:
-        raise JobError("There is no video in this file")
-    args = ["-map", f"0:{video.index}"]
-    for s in info.audio:
-        args += ["-map", f"0:{s.index}"]
-    if subtitles:
-        args += _subtitle_maps(info, format_id) + _attachment_maps(info, format_id)
-    return args
-
-
 def _cover_maps(info: MediaInfo, format_id: str) -> list[str]:
     cover = info.cover
     if cover is None or cover.codec not in COVER_CODECS.get(format_id, ()):
         return []
     return ["-map", f"0:{cover.index}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]
-
-
-def audio_maps(info: MediaInfo, format_id: str) -> list[str]:
-    """The first audio track of an audio file and its cover art."""
-    if not info.audio:
-        raise JobError("There is no sound in this file")
-    return ["-map", f"0:{info.audio[0].index}", *_cover_maps(info, format_id)]
 
 
 def _tail(format_id: str) -> list[str]:
@@ -286,33 +242,7 @@ def _tail(format_id: str) -> list[str]:
     return [*extra, "-f", MUXERS[format_id]]
 
 
-def _run(ctx, args: list, out: Path, duration: float, report=None) -> None:
-    ffmpeg.run_ffmpeg([*args, out], ctx, duration_s=duration, report=report)
-
-
 # --- trim and split ---------------------------------------------------------------------------
-
-
-def cut_args(source: Source, start: float, end: float, *, fast: bool) -> list:
-    """ffmpeg arguments (without the output) for the part ``start``..``end`` (already snapped
-    to a keyframe for a fast cut)."""
-    fmt, info = source.format_id, source.info
-    args: list = ["-ss", _t(start), "-i", source.path, "-t", _t(end - start)]
-    if source.is_video:
-        args += [*video_maps(info, fmt), "-c", "copy"]
-        if not fast:
-            args += encode_video(fmt)
-            for i, stream in enumerate(info.audio):
-                args += encode_audio(stream, fmt, f"a:{i}")
-    else:
-        args += audio_maps(info, fmt)
-        lossless = fmt in LOSSLESS_AUDIO
-        args += encode_audio(info.audio[0], fmt, "a") if lossless else ["-c:a", "copy"]
-    return [*args, "-map_metadata", "0", "-map_chapters", "-1", *_tail(fmt)]
-
-
-def cut(ctx, source: Source, out: Path, start: float, end: float, *, fast: bool, report=None):
-    _run(ctx, cut_args(source, start, end, fast=fast), out, end - start, report)
 
 
 def split_points(
@@ -334,27 +264,6 @@ def split_points(
     return tuple(kept)
 
 
-def segments(
-    duration: float, points: Sequence[float], keys: Sequence[float] | None = None
-) -> tuple[tuple[float, float], ...]:
-    """The parts between the cut ``points``; with ``keys`` (a fast cut) every point moves back
-    to its keyframe, so the parts still follow each other without a gap or an overlap."""
-    cuts = [snap_back(p, keys) for p in points] if keys is not None else list(points)
-    edges = sorted({0.0, *(c for c in cuts if c > 0), duration})
-    return tuple((a, b) for a, b in itertools.pairwise(edges) if b - a > 1e-3)
-
-
-def split(ctx, source: Source, folder: Path, parts: Sequence[tuple[float, float]], *, fast: bool):
-    stem, ext = source.path.stem, source.path.suffix
-    width = max(2, len(str(len(parts))))
-    for n, (start, end) in enumerate(parts, 1):
-        ctx.check()
-        ctx.progress((n - 1) / len(parts), f"Part {n} of {len(parts)}")
-        out = folder / f"{stem}-{n:0{width}d}{ext}"
-        span = ffmpeg.sub_progress(ctx, (n - 1) / len(parts), n / len(parts))
-        cut(ctx, source, out, start, end, fast=fast, report=span)
-
-
 # --- crop -------------------------------------------------------------------------------------
 
 Box = tuple[float, float, float, float]
@@ -368,20 +277,6 @@ def even_box(box: Box, size: tuple[int, int]) -> tuple[int, int, int, int]:
     w = max(2, min(w_max - x0, round(box[2] - x0)) // 2 * 2)
     h = max(2, min(h_max - y0, round(box[3] - y0)) // 2 * 2)
     return x0, y0, w, h
-
-
-def crop_args(source: Source, box: Box) -> list:
-    x, y, w, h = even_box(box, source.size)
-    fmt = source.format_id
-    return [
-        "-i", source.path, *video_maps(source.info, fmt),
-        "-filter:v", f"crop={w}:{h}:{x}:{y}", "-c", "copy", *encode_video(fmt),
-        "-map_metadata", "0", *_tail(fmt),
-    ]  # fmt: skip
-
-
-def crop(ctx, source: Source, out: Path, box: Box) -> None:
-    _run(ctx, crop_args(source, box), out, source.duration)
 
 
 # --- speed ------------------------------------------------------------------------------------
@@ -407,33 +302,6 @@ def speed_audio_filter(factor: float, stream: Stream, keep_pitch: bool) -> str:
     return f"asetrate={round(rate * factor)},aresample={rate}"
 
 
-def speed_args(source: Source, factor: float, *, keep_pitch: bool = True) -> list:
-    low, high = SPEED_RANGE
-    if not low <= factor <= high or abs(factor - 1.0) < 1e-6:
-        raise JobError(f"The speed must be between {low:g}× and {high:g}× and not 1×")
-    fmt, info = source.format_id, source.info
-    args: list = ["-i", source.path]
-    audio = info.audio if source.is_video else info.audio[:1]
-    if source.is_video:
-        args += video_maps(info, fmt, subtitles=False)
-        # fps keeps the frame rate, so the last frame does not stretch the end
-        rate = f",fps={source.fps:.6g}" if source.fps else ""
-        args += ["-filter:v", f"setpts=PTS/{factor:.6g}{rate}", *encode_video(fmt)]
-    else:
-        args += audio_maps(info, fmt)
-    for i, stream in enumerate(audio):
-        spec = f"a:{i}"
-        args += [f"-filter:{spec}", speed_audio_filter(factor, stream, keep_pitch)]
-        args += encode_audio(stream, fmt, spec)
-    return [*args, "-map_metadata", "0", "-map_chapters", "-1", *_tail(fmt)]
-
-
-def speed(ctx, source: Source, out: Path, factor: float, *, keep_pitch: bool = True) -> None:
-    _run(ctx, speed_args(source, factor, keep_pitch=keep_pitch), out, source.duration / factor)
-    if source.info.subtitles:
-        ctx.note("Subtitles were not kept (their timing would not match)")
-
-
 # --- snapshots --------------------------------------------------------------------------------
 
 SNAPSHOT_FORMATS = {"png": ["-c:v", "png"], "jpg": ["-c:v", "mjpeg", "-q:v", "2"]}
@@ -443,33 +311,6 @@ def snapshot_time(source: Source, t: float) -> float:
     """``t`` kept before the last frame, where a picture still exists."""
     frame = 1 / source.fps if source.fps else 0.04
     return max(0.0, min(t, source.duration - frame))
-
-
-def snapshot_args(source: Source, t: float, image_format: str, *, before: bool = False) -> list:
-    """One picture at ``t``; with ``before``, the last picture of the second up to ``t``
-    (near the end of some files there is no picture exactly at ``t``)."""
-    video = source.info.video
-    if video is None:
-        raise JobError("There is no video in this file")
-    t = snapshot_time(source, t)
-    window = ["-ss", _t(t - 1.0), "-t", "1.0"] if before else ["-ss", _t(t)]
-    pick = ["-update", "1"] if before else ["-frames:v", "1"]
-    return [
-        *window, "-i", source.path, "-map", f"0:{video.index}", *pick,
-        *SNAPSHOT_FORMATS[image_format], "-f", "image2",
-    ]  # fmt: skip
-
-
-def snapshots(ctx, source: Source, shots: Sequence[tuple[float, Path]], image_format: str):
-    for n, (t, out) in enumerate(shots):
-        ctx.check()
-        ctx.progress(n / len(shots))
-        ffmpeg.run_ffmpeg([*snapshot_args(source, t, image_format), out], ctx)
-        if not out.exists() or out.stat().st_size == 0:
-            out.unlink(missing_ok=True)
-            ffmpeg.run_ffmpeg([*snapshot_args(source, t, image_format, before=True), out], ctx)
-        if not out.exists() or out.stat().st_size == 0:
-            raise JobError(f"There is no picture at {clock(t)}")
 
 
 def clock(t: float) -> str:
@@ -543,26 +384,6 @@ def redact_graph(regions: Sequence[Region], size: tuple[int, int], video_index: 
 REDACT_NOTE = "Metadata was removed from the redacted copy"
 
 
-def redact_video_args(source: Source, regions: Sequence[Region]) -> list:
-    if not regions:
-        raise JobError("Nothing to hide")
-    fmt, info = source.format_id, source.info
-    video = info.video
-    if video is None:
-        raise JobError("There is no video in this file")
-    graph = redact_graph(regions, source.size, video.index)
-    maps = video_maps(info, fmt)[2:]  # everything but the video, which comes from the graph
-    return [
-        "-i", source.path, "-filter_complex", graph, "-map", f"[v{len(regions)}]", *maps,
-        "-c", "copy", *encode_video(fmt), "-map_metadata", "-1", *_tail(fmt),
-    ]  # fmt: skip
-
-
-def redact_video(ctx, source: Source, out: Path, regions: Sequence[Region]) -> None:
-    _run(ctx, redact_video_args(source, regions), out, source.duration)
-    ctx.note(REDACT_NOTE)
-
-
 # --- audio channels -----------------------------------------------------------------------------
 
 CHANNEL_MODES: dict[str, tuple[str, str]] = {
@@ -626,28 +447,8 @@ def channel_lanes(mode: str, lanes: Sequence[Sequence[float]]) -> tuple[tuple[fl
     }[mode]
 
 
-def channels_args(source: Source, mode: str) -> list:
-    fmt, info = source.format_id, source.info
-    if not info.audio:
-        raise JobError("There is no sound in this file")
-    first = info.audio[0]
-    graph, count = channel_filter(mode, first.channels)
-    maps = video_maps(info, fmt) if source.is_video else audio_maps(info, fmt)
-    return [
-        "-i", source.path, *maps, "-c", "copy", "-filter:a:0", graph,
-        *encode_audio(first, fmt, "a:0", channels=count), "-map_metadata", "0", *_tail(fmt),
-    ]  # fmt: skip
-
-
-def change_channels(ctx, source: Source, out: Path, mode: str) -> None:
-    _run(ctx, channels_args(source, mode), out, source.duration)
-    if len(source.info.audio) > 1:
-        ctx.note("Only the first sound track was changed")
-
-
 # --- redact audio -------------------------------------------------------------------------------
 
-AUDIO_REDACT_STYLES = ("bleep", "silence")
 Span = tuple[float, float]
 
 
@@ -673,23 +474,6 @@ def redact_audio_filter(spans: Sequence[Span], style: str) -> str:
         return f"volume=0:enable='{inside}'"
     tone = f"{BLEEP_LEVEL}*sin(2*PI*{BLEEP_HZ}*t)"
     return f"aeval=exprs='if({inside},{tone},val(ch))':c=same"
-
-
-def redact_audio_args(source: Source, spans: Sequence[Span], style: str) -> list:
-    fmt, info = source.format_id, source.info
-    if not info.audio:
-        raise JobError("There is no sound in this file")
-    graph = redact_audio_filter(spans, style)
-    audio = info.audio if source.is_video else info.audio[:1]
-    maps = video_maps(info, fmt) if source.is_video else audio_maps(info, fmt)
-    args: list = ["-i", source.path, *maps, "-c", "copy", "-filter:a", graph]
-    for i, stream in enumerate(audio):
-        args += encode_audio(stream, fmt, f"a:{i}")
-    return [*args, "-map_metadata", "0", *_tail(fmt)]
-
-
-def redact_audio(ctx, source: Source, out: Path, spans: Sequence[Span], style: str) -> None:
-    _run(ctx, redact_audio_args(source, spans, style), out, source.duration)
 
 
 # --- audio to video ---------------------------------------------------------------------------
@@ -785,35 +569,6 @@ def visual_args(
         graph = f"[0:{first.index}]anull[a];" + graph
         audio = f"0:{first.index}"
     return [*inputs, "-filter_complex", graph, "-map", "[v]", "-map", audio]
-
-
-def visual_encode(source: Source, style: str) -> list:
-    first = source.info.audio[0]
-    target = VIDEO_TARGETS["mp4"]
-    copy = first.codec in target.audio_copy
-    audio = ["-c:a", "copy"] if copy else encode_audio(first, "mp4", "a")
-    video = encode_video("mp4")
-    if style == "still":
-        video += ["-tune", "stillimage"]
-    # No -shortest: with a copied sound it ends the file before the first encoded picture.
-    return [*video, *audio, "-map_metadata", "0", *_tail("mp4")]
-
-
-def audio_to_video(
-    ctx,
-    source: Source,
-    out: Path,
-    style: str,
-    size: tuple[int, int],
-    background: RGB,
-    color: RGB,
-    picture: Path | None = None,
-) -> None:
-    with tempfile.TemporaryDirectory(prefix="quince-cover-") as tmp:
-        if style == "still" and picture is None:
-            picture = extract_cover(source, Path(tmp) / "cover.png", ctx)
-        args = visual_args(source, style, size, background, color, picture)
-        _run(ctx, [*args, *visual_encode(source, style)], out, source.duration)
 
 
 def visual_preview(

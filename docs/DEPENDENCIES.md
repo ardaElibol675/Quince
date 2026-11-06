@@ -100,7 +100,7 @@ process at startup; `QUINCE_KEEP_PYTHONPATH=1` turns this off.
 | `pytest`      | dev: tests                                  | 9.2.0          |
 | `pytest-qt`   | dev: Qt widget tests                        | 4.5.0          |
 
-PyMuPDF is AGPL-3.0. This is fine for personal use; check it before distributing a `.deb` (Phase 17).
+PyMuPDF is AGPL-3.0. This is fine for personal use; check it before distributing a `.deb` (Phase 18).
 
 ## Verified format support
 
@@ -195,5 +195,5 @@ and `unrar`, which were not installed at the time. Run the script again after in
 - **ROS on `PYTHONPATH`:** on this machine `~/.bashrc` sources ROS Humble. That puts
   `/opt/ros/humble/...` before the venv on `sys.path`, and ROS's pytest plugins break test
   collection. pytest is therefore configured with `--disable-plugin-autoload -p pytestqt.plugin`.
-  No ROS package currently shadows a Quince dependency. The Phase 17 launcher should clear
+  No ROS package currently shadows a Quince dependency. The Phase 18 launcher should clear
   `PYTHONPATH`.

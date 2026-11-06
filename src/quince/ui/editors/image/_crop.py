@@ -1,23 +1,25 @@
-"""Crop image: drag a box on the picture; the part inside is saved as ``name-cropped``.
+"""Crop, in the Image Editor (and the box tool the Video Editor shares).
 
 Drag outside the box (or anywhere while it still covers the whole picture) to draw a new one,
 inside it to move it, on an edge or corner to resize it. Shift keeps the box's proportions;
 the Ratio list fixes them. Arrow keys move the box by a pixel (Shift: ten). The size fields
-set the box size in pixels.
+set the box size in pixels. The box is shown on the turned picture; it is kept in pixels of
+the original, so turning the picture later keeps the same part.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt
-from PySide6.QtGui import QColor, QImage, QKeyEvent, QMouseEvent, QPainter, QPainterPath
+from dataclasses import replace
+
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPainterPath
 from PySide6.QtWidgets import QComboBox, QLabel, QSpinBox
 
 from quince.backends import imageedit
-from quince.core.operations import JobRequest
 from quince.ui.editors import rects
+from quince.ui.editors.base import Mode, tool_button, toolbar_row
 from quince.ui.editors.boxes import BoxGesture, handle_cursor, handle_under, paint_box
 from quince.ui.editors.canvas import CanvasTool, ImageCanvas
-from quince.ui.editors.image._common import ImageEditor, size_text
 from quince.ui.editors.rects import Box
 
 RATIOS: tuple[tuple[str, str, float | None], ...] = (
@@ -33,11 +35,28 @@ RATIOS: tuple[tuple[str, str, float | None], ...] = (
     ("4:5", "4:5", 4 / 5),
 )
 SHADE = QColor(0, 0, 0, 135)
+NEW_MIN = 4.0  # screen pixels
+
+
+def ratio_combo() -> QComboBox:
+    combo = QComboBox()
+    for key, label, _value in RATIOS:
+        combo.addItem(label, key)
+    return combo
+
+
+def ratio_value(key: str, size: tuple[float, float]) -> float | None:
+    if key == "original":
+        return rects.aspect(size)
+    return dict((k, v) for k, _label, v in RATIOS)[key]
 
 
 class CropTool(CanvasTool):
-    def __init__(self, editor: CropEditor) -> None:
-        self.editor = editor
+    """The crop box on the canvas. ``owner`` provides ``canvas``, ``box``, ``bounds``,
+    ``ratio()``, ``set_box(box)`` and ``commit(merge)``."""
+
+    def __init__(self, owner) -> None:
+        self.editor = owner
         self.gesture: BoxGesture | None = None
         self.shift_ratio: float | None = None
 
@@ -135,88 +154,99 @@ class CropTool(CanvasTool):
         paint_box(painter, canvas, box, thirds=self.gesture is not None)
 
 
-NEW_MIN = 4.0  # screen pixels
+class CropPart:
+    """The Crop mode of the Image Editor. Coordinates on the canvas are pixels of the turned
+    (not yet cropped) picture."""
 
-
-class CropEditor(ImageEditor):
-    name = "image.crop"
-    title = "Crop Image"
-    compare_label = "Preview"
-    save_label = "Crop"
-
-    def __init__(self, selection, data, parent=None) -> None:
-        super().__init__(selection, data, parent)
-        w, h = self.image_size
-        self.bounds: Box = (0.0, 0.0, float(w), float(h))
-        self.box: Box = self.bounds
+    def __init__(self, editor) -> None:
+        self.editor = editor
         self._updating = False
-
-        self.add_tool(QLabel("Ratio"))
-        self.ratio_combo = QComboBox()
-        for key, label, _value in RATIOS:
-            self.ratio_combo.addItem(label, key)
+        widget, row = toolbar_row()
+        row.addWidget(QLabel("Ratio"))
+        self.ratio_combo = ratio_combo()
         self.ratio_combo.currentIndexChanged.connect(self._on_ratio)
-        self.add_tool(self.ratio_combo)
-        self.toolbar.addSpacing(12)
-        self.add_tool(QLabel("Size"))
-        self.width_spin = self._spin(w)
-        self.add_tool(self.width_spin)
-        self.add_tool(QLabel("×"))
-        self.height_spin = self._spin(h)
-        self.add_tool(self.height_spin)
-        self.add_tool(QLabel("px"))
-        self.toolbar.addStretch(1)
+        row.addWidget(self.ratio_combo)
+        row.addSpacing(12)
+        row.addWidget(QLabel("Size"))
+        self.width_spin = self._spin("width")
+        row.addWidget(self.width_spin)
+        row.addWidget(QLabel("×"))
+        self.height_spin = self._spin("height")
+        row.addWidget(self.height_spin)
+        row.addWidget(QLabel("px"))
+        row.addSpacing(12)
+        self.reset_button = tool_button("Whole Picture", tip="Keep the whole picture")
+        self.reset_button.clicked.connect(self.reset)
+        row.addWidget(self.reset_button)
+        row.addStretch(1)
+        self.tool = CropTool(self)
+        self.mode = Mode(
+            "crop",
+            "Crop",
+            icon="quince-crop",
+            tip="Crop",
+            toolbar=widget,
+            tool=self.tool,
+            hint="Drag to choose the area · Shift keeps the shape · Arrows move it",
+        )
+        self.sync()
 
-        self.canvas.set_image(self.original, self.full_size())
-        self.canvas.tool = CropTool(self)
-        self.set_hint("Drag to choose the area · Shift keeps the shape · Arrows move it")
-        self._sync_controls()
-        self.start_history()
-
-    def _spin(self, maximum: int) -> QSpinBox:
+    def _spin(self, side: str) -> QSpinBox:
         spin = QSpinBox()
-        spin.setRange(1, maximum)
-        spin.setValue(maximum)
+        spin.setRange(1, 1)
         spin.setKeyboardTracking(False)
-        spin.valueChanged.connect(self._on_size)
+        spin.valueChanged.connect(lambda _v: self._on_size(side))
         return spin
 
-    # --- state ------------------------------------------------------------------------
+    # --- what CropTool needs ------------------------------------------------------------
 
-    def state(self) -> tuple:
-        return (imageedit.pixel_box(self.box, self.image_size), self.ratio_combo.currentData())
+    @property
+    def canvas(self) -> ImageCanvas:
+        return self.editor.canvas
 
-    def set_state(self, state: tuple) -> None:
-        box, ratio = state
-        self._updating = True
-        self.ratio_combo.setCurrentIndex(self.ratio_combo.findData(ratio))
-        self._updating = False
-        self.set_box(tuple(float(v) for v in box))
+    def _geometry(self):
+        return self.editor.edit.geometry(self.editor.image_size, crop=False)
 
-    def can_save(self) -> bool:
-        return imageedit.pixel_box(self.box, self.image_size) != (0, 0, *self.image_size)
+    @property
+    def bounds(self) -> Box:
+        return self._geometry().bounds
+
+    @property
+    def box(self) -> Box:
+        crop = self.editor.edit.crop
+        if crop is None:
+            return self.bounds
+        return self._geometry().forward_box(crop)
 
     def ratio(self) -> float | None:
-        key = self.ratio_combo.currentData()
-        if key == "original":
-            return rects.aspect(self.image_size)
-        return dict((k, v) for k, _label, v in RATIOS)[key]
+        return ratio_value(self.ratio_combo.currentData(), self._geometry().out_size)
 
     def set_box(self, box: Box) -> None:
-        self.box = box
-        self._sync_controls()
-        self.canvas.update()
-        self.update_buttons()
+        crop = self._geometry().inverse_box(box)
+        self.editor.change(replace(self.editor.edit, crop=crop), record=False)
+        self.sync()
 
-    def _sync_controls(self) -> None:
-        x0, y0, x1, y1 = imageedit.pixel_box(self.box, self.image_size)
-        self._updating = True
-        self.width_spin.setValue(x1 - x0)
-        self.height_spin.setValue(y1 - y0)
-        self._updating = False
-        self.info.setText(f"{size_text(self.image_size)} → {size_text((x1 - x0, y1 - y0))}")
+    def commit(self, merge: str | None = None) -> None:
+        self.editor.change(self.editor.edit, merge=merge)
 
     # --- controls -----------------------------------------------------------------------
+
+    def reset(self) -> None:
+        self.editor.change(replace(self.editor.edit, crop=None))
+
+    def sync(self) -> None:
+        """Show the current box in the size fields."""
+        bw, bh = self._geometry().out_size
+        x0, y0, x1, y1 = self.box
+        self._updating = True
+        for spin, maximum, value in (
+            (self.width_spin, bw, x1 - x0),
+            (self.height_spin, bh, y1 - y0),
+        ):
+            spin.setRange(1, max(1, round(maximum)))
+            spin.setValue(max(1, round(value)))
+        self._updating = False
+        self.reset_button.setEnabled(self.editor.edit.crop is not None)
 
     def _on_ratio(self, _index: int) -> None:
         if self._updating:
@@ -224,37 +254,32 @@ class CropEditor(ImageEditor):
         ratio = self.ratio()
         if ratio:
             self.set_box(rects.fit_ratio(self.box, ratio, self.bounds))
-        self.commit()
+            self.commit()
 
-    def _on_size(self, _value: int) -> None:
+    def _on_size(self, side: str) -> None:
         if self._updating:
             return
         ratio = self.ratio()
+        bounds = self.bounds
         w, h = float(self.width_spin.value()), float(self.height_spin.value())
         if ratio:
-            if self.sender() is self.width_spin:
+            if side == "width":
                 h = w / ratio
             else:
                 w = h * ratio
-            bw, bh = rects.width(self.bounds), rects.height(self.bounds)
-            factor = min(1.0, bw / w, bh / h)
+            factor = min(1.0, rects.width(bounds) / w, rects.height(bounds) / h)
             w, h = w * factor, h * factor
         cx, cy = rects.center(self.box)
         box = (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
-        self.set_box(rects.moved(box, 0, 0, self.bounds))
+        self.set_box(rects.moved(box, 0, 0, bounds))
         self.commit("size")
 
-    # --- result -------------------------------------------------------------------------
 
-    def compare_image(self) -> tuple[QImage, QSizeF]:
-        x0, y0, x1, y1 = imageedit.pixel_box(self.box, self.image_size)
-        s = self.loaded.scale
-        part = QRectF(x0 * s, y0 * s, (x1 - x0) * s, (y1 - y0) * s).toAlignedRect()
-        return self.original.copy(part), QSizeF(x1 - x0, y1 - y0)
-
-    def build_job(self) -> JobRequest:
-        box = imageedit.pixel_box(self.box, self.image_size)
-        return self.job(lambda im: imageedit.crop(im, box), "cropped")
-
-
-EDITOR = CropEditor
+def rounded_crop(crop: Box | None, size: tuple[int, int]) -> Box | None:
+    """``crop`` in whole pixels; None when it keeps the whole picture."""
+    if crop is None:
+        return None
+    box = imageedit.pixel_box(crop, size)
+    if box == (0, 0, *size):
+        return None
+    return tuple(float(v) for v in box)  # type: ignore[return-value]

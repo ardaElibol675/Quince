@@ -126,30 +126,20 @@ def test_tools_offered_per_kind_of_file(tmp_path):
         return [op.id for op in REGISTRY.query(sel, Kind.TOOL)]
 
     assert tools("sample.jpg") == [
-        "tool.compress", "tool.crop_image", "tool.edit_image", "tool.annotate_image",
-        "tool.redact_image", "tool.frame_image", "tool.metadata", "tool.read_qr",
+        "tool.edit_image", "tool.compress", "tool.metadata", "tool.read_qr",
     ]  # fmt: skip
     assert "tool.images_to_pdf" in tools("sample.jpg", "sample.png")
     assert "tool.create_collage" in tools("sample.jpg", "sample.png")
-    assert "tool.crop_image" not in tools("sample.jpg", "sample.png")
+    assert "tool.edit_image" not in tools("sample.jpg", "sample.png")
     assert tools("sample.pdf") == ["tool.compress", "tool.metadata"]
     assert "tool.merge_pdfs" not in tools("sample.pdf")
-    assert tools("sample-video.mp4") == [
-        "tool.compress", "tool.trim_video", "tool.crop_video", "tool.change_speed",
-        "tool.split_video", "tool.video_snapshots", "tool.redact_video", "tool.audio_channels",
-        "tool.redact_audio", "tool.metadata", "tool.remove_audio", "tool.normalize_audio",
-    ]  # fmt: skip
-    assert "tool.join_videos" in tools("sample-video.mp4", "sample-video.mkv")
-    assert tools("sample-audio.wav") == [
-        "tool.trim_audio", "tool.change_speed", "tool.audio_channels", "tool.redact_audio",
-        "tool.audio_to_video", "tool.metadata", "tool.normalize_audio",
-    ]  # fmt: skip
-    assert "tool.trim_video" not in tools("sample-video.mp4", "sample-video.mkv")
+    assert tools("sample-video.mp4") == ["tool.edit_video", "tool.compress", "tool.metadata"]
+    both = tools("sample-video.mp4", "sample-video.mkv")
+    assert "tool.join_videos" in both and "tool.edit_video" not in both
+    assert "tool.remove_audio" in both and "tool.normalize_audio" in both  # batch tools
+    assert tools("sample-audio.wav") == ["tool.edit_audio", "tool.metadata"]
     assert tools("sample.zip") == ["tool.extract_archive"]
-    assert tools("sample.svg") == [
-        "tool.crop_image", "tool.edit_image", "tool.annotate_image", "tool.redact_image",
-        "tool.frame_image",
-    ]  # fmt: skip
+    assert tools("sample.svg") == ["tool.edit_image"]
     svg = Selection.from_paths([copy_fixture("sample.svg", tmp_path)])
     shown = REGISTRY.query(svg, Kind.TOOL, available=AVAILABLE)
     assert bool(shown) == AVAILABLE.is_available("rsvg-convert")  # SVG is rendered to edit it
@@ -353,13 +343,15 @@ def test_metadata_media(tmp_path):
 @needs("ffmpeg", "ffprobe")
 def test_remove_audio(tmp_path):
     src = copy_fixture("sample-video.mkv", tmp_path)
-    (out,) = ok(run_op("tool.remove_audio", [src]))
-    assert out.name == "sample-video-no-audio.mkv"
+    other = Path(shutil.copy(src, tmp_path / "other.mkv"))
+    outs = ok(run_op("tool.remove_audio", [src, other]))
+    assert sorted(o.name for o in outs) == ["other-no-audio.mkv", "sample-video-no-audio.mkv"]
     from quince.backends import ffmpeg as ff
 
-    info = ff.probe(out)
-    assert info.video is not None and not info.audio
-    assert "no sound" in failed(run_op("tool.remove_audio", [out]))
+    for out in outs:
+        info = ff.probe(out)
+        assert info.video is not None and not info.audio
+    assert "no sound" in failed(run_op("tool.remove_audio", list(outs)))
 
 
 @needs("ffmpeg", "ffprobe")
@@ -369,8 +361,9 @@ def test_normalize_audio(tmp_path):
 
     src = tmp_path / "quiet.flac"
     ffmpeg("-f", "lavfi", "-i", "sine=frequency=300:duration=6,volume=0.05", "-ar", "44100", src)
-    snap = run_op("tool.normalize_audio", [src])
-    (out,) = ok(snap)
+    other = Path(shutil.copy(src, tmp_path / "quiet 2.flac"))
+    snap = run_op("tool.normalize_audio", [src, other])
+    out = next(o for o in ok(snap) if o.name == "quiet-normalized.flac")
     assert any("→ -16 LUFS" in n for n in snap.notes)
     info = ff.probe(out)
     assert info.audio[0].codec == "flac" and info.audio[0].sample_rate == 44100
@@ -378,7 +371,10 @@ def test_normalize_audio(tmp_path):
     assert abs(loud.integrated - mediatools.TARGET_LUFS) < 1.0
     silent = tmp_path / "silent.wav"
     ffmpeg("-f", "lavfi", "-i", "anullsrc=duration=2", silent)
-    assert "silent" in failed(run_op("tool.normalize_audio", [silent]))
+    silent2 = Path(shutil.copy(silent, tmp_path / "silent 2.wav"))
+    assert "silent" in failed(run_op("tool.normalize_audio", [silent, silent2]))
+    one = Selection.from_paths([src])
+    assert REGISTRY.get("tool.normalize_audio") not in REGISTRY.query(one, Kind.TOOL)
 
 
 @needs("ffmpeg", "ffprobe")

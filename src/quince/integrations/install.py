@@ -1,7 +1,7 @@
 """``quince integrate``: the menu entry, the icon and the Nautilus extension for this user.
 
 Everything goes into the user's XDG data folder (``~/.local/share``); nothing needs root.
-The ``.deb`` package (Phase 17) installs the same files system-wide instead.
+The ``.deb`` package (Phase 18) installs the same files system-wide instead.
 
 | File | For |
 |------|-----|

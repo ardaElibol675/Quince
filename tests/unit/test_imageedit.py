@@ -196,6 +196,5 @@ def test_save_transparent_result_of_a_jpg_as_png(tmp_path):
     snap = _save(src, "jpg", lambda im: imageedit.frame(im, style), target_format="png")
     (out,) = snap.outputs
     assert out.suffix == ".png"
-    assert imageedit.SAVED_AS_PNG_NOTE in snap.notes
     with Image.open(out) as im:
         assert im.mode == "RGBA"

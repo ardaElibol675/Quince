@@ -12,7 +12,7 @@ OPERATION = Operation(
     kind=Kind.TOOL,
     label="Collage",
     title="Create collage…",
-    icon="view-grid",
+    icon="quince-collage",
     accepts=Accepts(formats=IMAGE_EDITABLE, min_items=2, max_items=MAX_PICTURES),
     requires=("pillow",),
     requires_by_format=IMAGE_EDITOR_DEPS,

@@ -57,6 +57,12 @@ def unique_path(path: Path, reserved: Collection[Path] = ()) -> Path:
     raise FileExistsError(f"no free name for {path}")
 
 
+def clean_stem(name: str) -> str:
+    """A user-typed file name made safe: no folders, no leading/trailing spaces or dots."""
+    name = name.replace("/", "-").replace("\0", "")
+    return name.strip().strip(".").strip()
+
+
 def output_path(
     source: Path,
     *,
@@ -64,16 +70,19 @@ def output_path(
     suffix: str | None = None,
     directory: Path | None = None,
     reserved: Collection[Path] = (),
+    stem: str | None = None,
 ) -> Path:
     """A free path for an output made from ``source``.
 
     ``extension``: the output's extension without a dot; None keeps the source's, and
     ``""`` means none (an output folder). ``suffix``: added to the stem with a dash, e.g.
-    ``"cropped"``. ``directory``: defaults to the source's folder.
+    ``"cropped"``. ``directory``: defaults to the source's folder. ``stem``: a name chosen
+    by the user instead of the source's (still made free with ``name (1)``).
     """
     source = Path(source)
-    stem, source_ext = split_extension(source.name)
+    source_stem, source_ext = split_extension(source.name)
     ext = source_ext if extension is None else extension.lstrip(".")
+    stem = clean_stem(stem or "") or source_stem
     if suffix:
         stem = f"{stem}-{suffix}"
     name = _fit(stem, f".{ext}" if ext else "")

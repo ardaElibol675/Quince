@@ -1,4 +1,4 @@
-"""The media editors' ffmpeg plans (pure argument builders, no ffmpeg run)."""
+"""The pieces of the media editors' ffmpeg work (pure builders, no ffmpeg run)."""
 
 from __future__ import annotations
 
@@ -40,42 +40,12 @@ def test_snap_back_to_keyframe():
     assert me.snap_back(1.0, ()) == 0.0
 
 
-def test_split_points_and_segments():
+def test_split_points():
     assert me.split_points(10.0, parts=4) == (2.5, 5.0, 7.5)
     assert me.split_points(10.0, every=3.0) == (3.0, 6.0, 9.0)
     assert me.split_points(10.0, every=5.0) == (5.0,)  # no empty last part
     # markers outside, at the very edges or too close together are ignored
     assert me.split_points(10.0, markers=(0.01, 4.0, 4.05, 12.0, 9.99)) == (4.0,)
-    assert me.segments(10.0, (4.0,)) == ((0.0, 4.0), (4.0, 10.0))
-    # a fast cut moves every point back to its keyframe; parts stay gapless
-    keys = (0.0, 3.0, 6.0)
-    assert me.segments(10.0, (4.0, 7.5), keys) == ((0.0, 3.0), (3.0, 6.0), (6.0, 10.0))
-    assert me.segments(10.0, (1.0,), keys) == ((0.0, 10.0),)  # snapped to the start: one part
-
-
-def test_cut_args_exact_fast_and_audio():
-    src = video_source(streams=(VIDEO, AUDIO, SUBS))
-    exact = me.cut_args(src, 2.0, 5.0, fast=False)
-    assert exact[:5] == ["-ss", "2.000", "-i", src.path, "-t"] and after(exact, "-t") == ["3.000"]
-    assert "libx264" in exact and after(exact, "-map")[:3] == ["0:0", "0:1", "0:2"]
-    assert after(exact, "-c:a:0") == ["aac"]  # so the sound starts with the picture
-    assert after(exact, "-map_chapters") == ["-1"] and exact[-2:] == ["-f", "mp4"]
-    fast = me.cut_args(src, 2.0, 5.0, fast=True)
-    assert "libx264" not in fast and after(fast, "-c") == ["copy"] and "-c:a:0" not in fast
-    lossy = me.cut_args(audio_source(), 1.0, 2.0, fast=False)
-    assert after(lossy, "-c:a") == ["copy"]
-    lossless = me.cut_args(audio_source("flac", "flac"), 1.0, 2.0, fast=False)
-    assert after(lossless, "-c:a") == ["flac"]  # exact, still lossless
-
-
-def test_subtitles_kept_only_when_the_container_stores_them():
-    picture = Stream(3, "subtitle", "hdmv_pgs_subtitle")
-    mp4 = me.video_maps(MediaInfo((VIDEO, AUDIO, SUBS, picture)), "mp4")
-    assert "0:2" in mp4 and "0:3" not in mp4
-    mkv = me.video_maps(MediaInfo((VIDEO, AUDIO, SUBS, picture)), "mkv")
-    assert "0:2" in mkv and "0:3" in mkv
-    with pytest.raises(JobError):
-        me.video_maps(MediaInfo((AUDIO,)), "mp4")
 
 
 # --- crop, speed -------------------------------------------------------------------------------
@@ -87,39 +57,11 @@ def test_even_box():
     assert me.even_box((159.0, 119.0, 160.0, 120.0), (160, 120))[2:] == (2, 2)
 
 
-def test_crop_args():
-    args = me.crop_args(video_source(), (100.0, 50.0, 1100.0, 650.0))
-    assert after(args, "-filter:v") == ["crop=1000:600:100:50"]
-
-
 def test_atempo_chain_stays_in_range():
     assert me.atempo_chain(1.5) == "atempo=1.5"
     assert me.atempo_chain(4.0) == "atempo=2,atempo=2"
     assert me.atempo_chain(0.25) == "atempo=0.5,atempo=0.5"
     assert me.atempo_chain(3.0) == "atempo=2,atempo=1.5"
-
-
-def test_speed_args():
-    args = me.speed_args(video_source(streams=(VIDEO, AUDIO, SUBS)), 2.0)
-    assert after(args, "-filter:v") == ["setpts=PTS/2,fps=25"]
-    assert after(args, "-filter:a:0") == ["atempo=2"]
-    assert "0:2" not in after(args, "-map")  # subtitles left out
-    tape = me.speed_args(audio_source(), 0.5, keep_pitch=False)
-    assert after(tape, "-filter:a:0") == ["asetrate=22050,aresample=44100"]
-    for wrong in (1.0, 0.1, 5.0):
-        with pytest.raises(JobError):
-            me.speed_args(audio_source(), wrong)
-
-
-# --- snapshots ----------------------------------------------------------------------------------
-
-
-def test_snapshot_args_stay_before_the_last_frame():
-    src = video_source()
-    args = me.snapshot_args(src, 10.0, "jpg")
-    assert args[:2] == ["-ss", "9.960"] and "mjpeg" in args and after(args, "-frames:v") == ["1"]
-    before = me.snapshot_args(src, 10.0, "png", before=True)
-    assert before[:4] == ["-ss", "8.960", "-t", "1.0"] and "-update" in before
 
 
 # --- redact video -------------------------------------------------------------------------------
@@ -136,10 +78,6 @@ def test_redact_graph_chains_regions_with_time_ranges():
     assert "enable='between(t,1.000,2.500)'[v1]" in graph
     assert "crop=200:100:0:0,boxblur=lr=25:lp=3:cr=12:cp=3" in graph
     assert "scale=8:4:flags=area,scale=40:20:flags=neighbor" in graph and graph.endswith("[v3]")
-    args = me.redact_video_args(video_source(), regions)
-    assert after(args, "-map")[0] == "[v3]" and after(args, "-map_metadata") == ["-1"]
-    with pytest.raises(JobError):
-        me.redact_video_args(video_source(), [])
 
 
 def test_blur_radii_fit_small_areas():
@@ -175,15 +113,6 @@ def test_channel_lanes_preview():
     assert me.channel_lanes("stereo", ((0.3,),)) == ((0.3,), (0.3,))
 
 
-def test_channels_args_change_only_the_first_track():
-    second = Stream(2, "audio", "aac", channels=2, sample_rate=48000)
-    args = me.channels_args(video_source(streams=(VIDEO, AUDIO, second)), "mono")
-    assert after(args, "-filter:a:0") == ["pan=mono|c0=0.5*c0+0.5*c1"]
-    assert "-filter:a:1" not in args and after(args, "-c:a:0") == ["aac"]
-    mp3 = me.channels_args(audio_source(channels=1), "stereo")
-    assert after(mp3, "-c:a:0") == ["libmp3lame"]
-
-
 # --- redact audio -------------------------------------------------------------------------------
 
 
@@ -212,18 +141,6 @@ def test_visual_graphs():
     assert "showcqt=s=1080x1080" in me.visual_graph("spectrum", (1080, 1080), (0, 0, 0), (1, 2, 3))
     still = me.visual_graph("still", (1920, 1080), (16, 30, 58), (0, 0, 0))
     assert "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x101e3a" in still
-
-
-def test_visual_args_inputs():
-    src = audio_source()
-    still = me.visual_args(src, "still", (1920, 1080), (0, 0, 0), (0, 0, 0), Path("/p.png"))
-    assert still[:2] == ["-loop", "1"] and after(still, "-map") == ["[v]", "1:0"]
-    with pytest.raises(JobError):
-        me.visual_args(src, "still", (1920, 1080), (0, 0, 0), (0, 0, 0), None)
-    copy = me.visual_encode(src, "waveform")
-    assert after(copy, "-c:a") == ["copy"] and "-shortest" not in copy
-    ogg = me.visual_encode(audio_source("ogg", "vorbis"), "waveform")
-    assert after(ogg, "-c:a") == ["aac"]
 
 
 # --- probing ------------------------------------------------------------------------------------

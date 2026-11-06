@@ -1,10 +1,13 @@
-"""Annotate image: draw with a pen or highlighter, add lines, arrows, boxes, ellipses and text.
+"""Annotate, in the Image Editor: draw with a pen or highlighter, add lines, arrows, boxes,
+ellipses and text.
 
-Tools (keys): Select V, Pen P, Highlighter H, Line L, Arrow A, Box R, Ellipse E, Text T.
+Tools (keys in this mode): Select V, Pen P, Highlighter H, Line L, Arrow A, Box R, Ellipse E,
+Text T.
 Shift makes lines and arrows snap to 45° and boxes and ellipses square. With Select, click a
 shape to pick it, drag to move it, Delete removes it; double-click a text to change it. A color
 or size chosen while a shape is picked changes that shape. Text: click to place, type, Enter
-to finish, Esc to drop it.
+to finish, Esc to drop it. Shapes are kept in pixels of the original, so they stay on the
+same part of the picture when the crop or the turns change.
 """
 
 from __future__ import annotations
@@ -12,25 +15,14 @@ from __future__ import annotations
 from dataclasses import replace
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import (
-    QColor,
-    QFocusEvent,
-    QKeyEvent,
-    QKeySequence,
-    QMouseEvent,
-    QPainter,
-    QPen,
-    QShortcut,
-)
+from PySide6.QtGui import QColor, QFocusEvent, QKeyEvent, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QButtonGroup, QLineEdit, QWidget
 
 from quince.backends import painting
 from quince.backends.painting import Shape
 from quince.core import forms
-from quince.core.operations import JobRequest
-from quince.ui.editors.base import Swatches, separator, tool_button
+from quince.ui.editors.base import Mode, Swatches, separator, tool_button, toolbar_row
 from quince.ui.editors.canvas import CanvasTool, ImageCanvas
-from quince.ui.editors.image._common import ImageEditor
 
 REMEMBER_KEY = "editor.annotate"
 TOOLS = (
@@ -86,7 +78,7 @@ class TextEntry(QLineEdit):
 
 
 class AnnotateTool(CanvasTool):
-    def __init__(self, editor: AnnotateEditor) -> None:
+    def __init__(self, editor: AnnotatePart) -> None:
         self.editor = editor
         self.drawing: Shape | None = None
         self.drag_start: tuple[float, float] | None = None
@@ -195,13 +187,14 @@ class AnnotateTool(CanvasTool):
         painter.setClipRect(rect)
         painter.translate(rect.topLeft())
         painter.scale(canvas.scale, canvas.scale)
-        shapes = [s for n, s in enumerate(editor.shapes) if n != editor.editing]
+        all_shapes = editor.shapes
+        shapes = [s for n, s in enumerate(all_shapes) if n != editor.editing]
         if self.drawing is not None:
             shapes.append(self.drawing)
         painting.paint_shapes(painter, shapes)
         painter.restore()
         if editor.selected is not None and editor.selected != editor.editing:
-            box = painting.bounds(editor.shapes[editor.selected])
+            box = painting.bounds(all_shapes[editor.selected])
             widget = canvas.rect_to_widget(box).adjusted(-3, -3, 3, 3)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(QColor(0, 0, 0, 150), 3))
@@ -211,44 +204,47 @@ class AnnotateTool(CanvasTool):
             painter.drawRect(widget)
 
 
-class AnnotateEditor(ImageEditor):
-    name = "image.annotate"
-    title = "Annotate Image"
+class AnnotatePart:
+    """The Annotate mode. On the canvas, shapes are in pixels of the cropped and turned
+    picture; the edit keeps them in pixels of the original."""
 
-    def __init__(self, selection, data, parent=None) -> None:
-        super().__init__(selection, data, parent)
-        self.shapes: tuple[Shape, ...] = ()
+    def __init__(self, editor) -> None:
+        self.editor = editor
         self.selected: int | None = None
         self.editing: int | None = None  # the text being typed again
         self.entry: TextEntry | None = None
         self._entry_point: tuple[float, float] = (0.0, 0.0)
         self._before_edit: Shape | None = None
         saved = forms.load_section(REMEMBER_KEY)
+        widget, row = toolbar_row()
+        self.mode = Mode(
+            "annotate",
+            "Annotate",
+            icon="draw-freehand",
+            tip="Draw, arrows, boxes, text",
+            toolbar=widget,
+            hint="Shift snaps angles and squares · Del removes the picked shape",
+        )
 
-        self.tools = QButtonGroup(self)
+        self.tools = QButtonGroup(widget)
         self.tools.setExclusive(True)
         for key, label, shortcut in TOOLS:
             button = tool_button(label, tip=f"{label}  {shortcut}", checkable=True)
             button.setProperty("quince_tool", key)
             self.tools.addButton(button)
-            self.add_tool(button)
-            QShortcut(
-                QKeySequence(shortcut),
-                self,
-                lambda b=button: b.click(),
-                context=Qt.ShortcutContext.WindowShortcut,
-            )
+            row.addWidget(button)
+            editor.mode_key(self.mode, shortcut, button.click)
         self.tools.buttonClicked.connect(lambda _b: self._on_tool())
-        self.add_tool(separator())
+        row.addWidget(separator())
 
         color = saved.get("color")
         valid = isinstance(color, list) and len(color) == 4
         self.swatches = Swatches(COLORS, tuple(color) if valid else COLORS[0][1])
         self.swatches.picked.connect(self._on_color)
-        self.add_tool(self.swatches)
-        self.add_tool(separator())
+        row.addWidget(self.swatches)
+        row.addWidget(separator())
 
-        self.sizes = QButtonGroup(self)
+        self.sizes = QButtonGroup(widget)
         self.sizes.setExclusive(True)
         size = saved.get("size") if saved.get("size") in SIZES else "m"
         for key, text, tip in SIZE_LABELS:
@@ -256,21 +252,40 @@ class AnnotateEditor(ImageEditor):
             button.setProperty("quince_size", key)
             button.setChecked(key == size)
             self.sizes.addButton(button)
-            self.add_tool(button)
+            row.addWidget(button)
         self.sizes.buttonClicked.connect(lambda _b: self._on_size())
-        self.add_tool(separator())
+        row.addWidget(separator())
         self.delete_button = tool_button("Delete", icon="edit-delete", tip="Delete  Del")
         self.delete_button.clicked.connect(self.delete_selected)
-        self.add_tool(self.delete_button)
-        self.toolbar.addStretch(1)
+        row.addWidget(self.delete_button)
+        row.addStretch(1)
 
         tool = saved.get("tool") if saved.get("tool") in dict((t[0], t) for t in TOOLS) else "arrow"
         self.set_tool(tool)
-        self.canvas.set_image(self.original, self.full_size())
-        self.canvas.tool = AnnotateTool(self)
-        self.set_hint("Shift snaps angles and squares · Del removes the picked shape")
+        self.tool = AnnotateTool(self)
+        self.mode.tool = self.tool
         self._update_selection()
-        self.start_history()
+
+    @property
+    def canvas(self) -> ImageCanvas:
+        return self.editor.canvas
+
+    def _geometry(self):
+        return self.editor.edit.geometry(self.editor.image_size)
+
+    @property
+    def shapes(self) -> tuple[Shape, ...]:
+        geometry = self._geometry()
+        return tuple(geometry.forward_shape(s) for s in self.editor.edit.shapes)
+
+    @shapes.setter
+    def shapes(self, shapes) -> None:
+        geometry = self._geometry()
+        stored = tuple(geometry.inverse_shape(s) for s in shapes)
+        self.editor.change(replace(self.editor.edit, shapes=stored), record=False)
+
+    def commit(self, merge: str | None = None) -> None:
+        self.editor.change(self.editor.edit, merge=merge)
 
     # --- settings -----------------------------------------------------------------------
 
@@ -295,7 +310,9 @@ class AnnotateEditor(ImageEditor):
     def stroke_width(self, kind: str = "") -> float:
         stroke, text = SIZES[self.size_key()]
         kind = kind or self.tool_name
-        return painting.default_width(self.image_size, text if kind == "text" else stroke)
+        w, h = self._geometry().out_size
+        size = (max(1, round(w)), max(1, round(h)))
+        return painting.default_width(size, text if kind == "text" else stroke)
 
     def remember(self) -> None:
         forms.save_section(
@@ -305,23 +322,18 @@ class AnnotateEditor(ImageEditor):
 
     # --- state ------------------------------------------------------------------------
 
-    def state(self) -> tuple[Shape, ...]:
-        return self.shapes
-
-    def set_state(self, state: tuple[Shape, ...]) -> None:
+    def sync(self) -> None:
+        """After undo / redo."""
         self._close_entry(keep=False)
-        self.shapes = state
-        if self.selected is not None and self.selected >= len(state):
+        if self.selected is not None and self.selected >= len(self.editor.edit.shapes):
             self.selected = None
         self._update_selection()
 
-    def can_save(self) -> bool:
-        return bool(self.shapes) and super().can_save()
-
     def shape_at(self, pos: QPointF, kinds: tuple[str, ...] = ()) -> int | None:
         tolerance = PICK_PX / self.canvas.scale
-        for index in range(len(self.shapes) - 1, -1, -1):
-            shape = self.shapes[index]
+        shapes = self.shapes
+        for index in range(len(shapes) - 1, -1, -1):
+            shape = shapes[index]
             if kinds and shape.kind not in kinds:
                 continue
             if painting.hit_area(shape, tolerance).contains(pos):
@@ -354,8 +366,8 @@ class AnnotateEditor(ImageEditor):
             return False
         shapes = list(self.shapes)
         del shapes[self.selected]
-        self.shapes = tuple(shapes)
         self.selected = None
+        self.shapes = tuple(shapes)
         self._update_selection()
         self.commit()
         return True
@@ -400,7 +412,7 @@ class AnnotateEditor(ImageEditor):
     def _open_entry(self, point: tuple[float, float], text: str, index: int | None) -> None:
         self._close_entry(keep=True)
         self.editing = index
-        self._before_edit = self.shapes[index] if index is not None else None
+        self._before_edit = self.editor.edit.shapes[index] if index is not None else None
         self._entry_point = point
         self.entry = TextEntry(
             self.canvas,
@@ -441,6 +453,10 @@ class AnnotateEditor(ImageEditor):
             QRectF(top_left.x(), top_left.y(), width, metrics.height() + 4).toRect()
         )
 
+    def finish_text(self) -> None:
+        """Keep the text being typed (before saving or leaving the mode)."""
+        self._close_entry(keep=True)
+
     def _close_entry(self, *, keep: bool) -> None:
         entry, self.entry = self.entry, None
         if entry is None:
@@ -452,7 +468,9 @@ class AnnotateEditor(ImageEditor):
         self.canvas.setFocus()
         if not keep:
             if index is not None and self._before_edit is not None:
-                self.replace_shape(index, self._before_edit)  # the old text shows again
+                stored = list(self.editor.edit.shapes)
+                stored[index] = self._before_edit  # the old text shows again
+                self.editor.change(replace(self.editor.edit, shapes=tuple(stored)), record=False)
             return
         if index is not None:
             if text.strip():
@@ -467,21 +485,6 @@ class AnnotateEditor(ImageEditor):
             self.add_shape(Shape("text", (point,), self.color(), self.stroke_width("text"), text))
         self.canvas.update()
 
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
+    def on_resize(self) -> None:
         if self.entry is not None:
             self._style_entry()
-
-    # --- result -------------------------------------------------------------------------
-
-    def build_job(self) -> JobRequest:
-        self._close_entry(keep=True)
-        shapes = self.shapes
-        return self.job(lambda im: painting.annotate(im, shapes), "annotated")
-
-    def save(self) -> None:
-        self._close_entry(keep=True)
-        super().save()
-
-
-EDITOR = AnnotateEditor

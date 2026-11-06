@@ -8,7 +8,7 @@ Keys (window shortcuts, so a number field still gets its own arrows):
 - Home / End go to the start / end.
 
 A video editor shows the picture with the timeline under it; a sound-only editor shows a
-large waveform timeline instead.
+large waveform timeline instead (``SoundView``, with room for a picture above it).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any, ClassVar
 
 from PySide6.QtCore import QSizeF, Qt
 from PySide6.QtGui import QCloseEvent, QColor, QImage, QKeySequence, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from quince.backends import mediaedit
 from quince.backends.mediaedit import Source, Waveform
@@ -37,6 +37,26 @@ from quince.ui.editors.media.timeline import Timeline
 
 MEDIA_HINT = "Space plays · ← → seek"
 MARKER_PX = 5  # a marker this close to the playhead is the one M removes
+
+
+class SoundView(QWidget):
+    """The preview of a sound: a large waveform timeline, and a picture above it that is
+    hidden unless an editor shows one (the Sound Editor's Video mode)."""
+
+    def __init__(self, duration: float) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        self.picture = ImageCanvas()
+        self.picture.setVisible(False)
+        layout.addWidget(self.picture, 3)
+        self.timeline = Timeline(duration, tall=True)
+        layout.addWidget(self.timeline, 2)
+
+    def show_picture(self, on: bool) -> None:
+        self.picture.setVisible(on)
+        self.timeline.setMinimumHeight(110 if on else 140)
 
 
 @dataclass(frozen=True)
@@ -89,8 +109,10 @@ class MediaEditor(EditorWindow):
             if self.media.wave is not None:
                 self.timeline.setFixedHeight(84)
             self.canvas.set_image(_black(self.picture_size()), QSizeF(*self.picture_size()))
+        elif isinstance(self.canvas, SoundView):
+            self.timeline = self.canvas.timeline  # the large waveform is the preview
         else:
-            self.timeline = self.canvas  # the large waveform is the preview
+            self.timeline = self.canvas
         if self.media.wave is not None:
             self.timeline.set_lanes(self.media.wave.lanes, self.lane_labels())
         self.timeline.seek.connect(self.seek_to)
@@ -159,7 +181,7 @@ class MediaEditor(EditorWindow):
     def create_canvas(self) -> QWidget:
         if self.shows_video:
             return ImageCanvas()
-        return Timeline(self.source.duration, tall=True)
+        return SoundView(self.source.duration)
 
     # --- for subclasses -----------------------------------------------------------------
 

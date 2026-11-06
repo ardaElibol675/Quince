@@ -236,18 +236,20 @@ class JobContext:
         suffix: str | None = None,
         directory: bool = False,
         target_dir: Path | None = None,
+        name: str | None = None,
     ) -> Path:
         """A temporary path to write one output to; returns it.
 
         The final name (next to ``source``, in the configured folder, or in ``target_dir``
         when given) is reserved now and taken when the job succeeds. With ``directory``, a
-        temporary folder is created.
+        temporary folder is created. ``name`` replaces the source's stem (a name the user
+        chose); it is still made free like any other.
         """
         if target_dir is None:
             target_dir = self._output.directory_for(Path(source))
         if not os.access(target_dir, os.W_OK | os.X_OK):
             raise JobError(f"Cannot write to {target_dir}")
-        final = self._queue._reserve(source, target_dir, extension, suffix)
+        final = self._queue._reserve(source, target_dir, extension, suffix, name)
         temp = target_dir / f"{TEMP_PREFIX}{secrets.token_hex(4)}-{final.name}"
         if directory:
             temp.mkdir()
@@ -405,7 +407,12 @@ class JobQueue:
         return snapshot
 
     def _reserve(
-        self, source: Path, directory: Path, extension: str | None, suffix: str | None
+        self,
+        source: Path,
+        directory: Path,
+        extension: str | None,
+        suffix: str | None,
+        stem: str | None = None,
     ) -> Path:
         with self._lock:
             final = naming.output_path(
@@ -414,6 +421,7 @@ class JobQueue:
                 suffix=suffix,
                 directory=directory,
                 reserved=self._reserved,
+                stem=stem,
             )
             self._reserved.add(final)
         return final

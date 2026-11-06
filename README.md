@@ -18,15 +18,26 @@ Terminal** and **Float**, which puts the files on a small always-on-top shelf to
 out later (dragging out always copies).
 
 The Tools wheel offers **Compress** (by quality, a percentage or a target size), **Metadata**
-(view, and save a copy without it), **Remove Audio**, **Normalize** loudness, **Extract**
-archives, **Join** videos, **Merge PDFs**, images **To One PDF** and **Read QR** codes; the
-Actions wheel also has **Archive** (ZIP, TAR.GZ, 7Z).
+(view, and save a copy without it), **Extract** archives, **Join** videos, **Merge PDFs**,
+images **To One PDF** and **Read QR** codes; for several audio files or videos at once also
+**Remove Audio** and **Normalize** loudness. The Actions wheel also has **Archive** (ZIP,
+TAR.GZ, 7Z).
 
-Images open in editors from the Tools wheel: **Crop**, **Edit** (turn, mirror, resize,
-brightness, contrast, saturation), **Annotate** (pen, highlighter, lines, arrows, boxes,
-ellipses, text), **Redact** (black box, blur, pixelate), **Frame** (padding, background,
-rounded corners, shadow) and, for several images, **Collage**. In every editor Enter or Ctrl+S
-saves a new file, Esc closes, Ctrl+Z undoes and `\` shows the original.
+One image, video or sound file gets an **Edit** slice on the Tools wheel, which opens one
+editor for every change:
+
+- **Image Editor**: Crop, Adjust (turn, mirror, resize, brightness, contrast, saturation),
+  Redact (black box, blur, pixelate), Annotate (pen, highlighter, lines, arrows, boxes,
+  ellipses, text) and Frame (padding, background, rounded corners, shadow).
+- **Video Editor**: Trim, Crop, Redact (areas for a stretch of time), Speed, Sound (channels,
+  bleeps, even loudness, remove the sound) and Split (**Save Parts…**); **Save Frames…** saves
+  pictures of the marked frames.
+- **Sound Editor**: Trim, Speed, Sound (channels, bleeps, even loudness) and Video (a
+  waveform, bars, spectrum or picture video, saved as MP4).
+
+Ctrl+1, Ctrl+2, … switch between the modes; one Ctrl+Z history covers them all. Enter or
+Ctrl+S asks for the new file's name (`name-edited`), format and folder; nothing is ever
+overwritten. Esc closes and `\` shows the original. Several images make a **Collage**.
 
 Without a drag: the **Quince window** (app menu, tray icon or `quince home`) has a drop area,
 Open Files (Ctrl+O) and Paste (Ctrl+V); select files and press Enter or tap a trigger key for

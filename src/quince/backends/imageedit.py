@@ -1,4 +1,4 @@
-"""The pixel work of the image editors (crop, edit, frame, redact) and saving their results.
+"""The pixel work of the Image Editor (crop, edit, frame, redact) and saving its result.
 
 An editor describes its result as data (a crop box, an ``Adjust``, a ``FrameStyle``, a list of
 ``Redaction``); the editor applies the same function to its small preview and the job applies
@@ -9,9 +9,9 @@ Coordinates are pixels of the upright original (EXIF orientation applied).
 
 Saving (``save_edited``):
 
-- The result keeps the source's format; SVG becomes PNG. A result with transparency whose
-  format cannot store it (a JPG with rounded corners on a transparent background) becomes a
-  PNG, and a note says so.
+- The result is saved in the format the user chose (``output_format`` is the default: the
+  source's format, SVG becomes PNG, and a result with transparency whose format cannot store
+  it becomes PNG). A format without transparency gets white behind it, with a note.
 - Animated GIF and WebP: every frame is edited. Other multi-frame files keep the first frame.
 - EXIF (without the orientation tag) and the color profile are kept. Pillow never writes the
   EXIF thumbnail, which would still show the unedited picture. ``keep_exif=False`` (Redact)
@@ -43,7 +43,6 @@ SVG_TIMEOUT_S = 120
 _WORK = imaging.Target("PNG", alpha=True)
 Transform = Callable[[Image.Image], Image.Image]
 RGBA = tuple[int, int, int, int]
-SAVED_AS_PNG_NOTE = "Saved as PNG to keep the transparency"
 FIRST_FRAME_NOTE = "Only the first frame was kept"
 
 
@@ -364,8 +363,6 @@ def save_edited(
     target_id = target_format or output_format(source_format)
     if target_id not in imaging.TARGETS:
         raise JobError(f"Cannot save edited images as {target_id.upper()}")
-    if target_id != output_format(source_format) and target_id == "png":
-        ctx.note(SAVED_AS_PNG_NOTE)
     with opened(src, source_format, ctx) as im:
         ctx.check()
         dpi = im.info.get("dpi")

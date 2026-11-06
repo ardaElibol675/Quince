@@ -1,4 +1,5 @@
-"""Remove audio: a copy of a video without its sound; every other stream is copied as is."""
+"""Remove audio: copies of several videos without their sound; every other stream is copied
+as is (one video loses its sound in the Video Editor)."""
 
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ OPERATION = Operation(
     kind=Kind.TOOL,
     label="Remove Audio",
     icon="audio-volume-muted",
-    accepts=Accepts(categories=frozenset({Category.VIDEO})),
+    accepts=Accepts(categories=frozenset({Category.VIDEO}), min_items=2),
     requires=MEDIA_DEPS,
     order=30,
     run=lambda ctx: each_file(ctx, _one),
