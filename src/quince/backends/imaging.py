@@ -105,8 +105,13 @@ def _label(format_id: str) -> str:
 # --- reading ------------------------------------------------------------------
 
 
-def _render_svg(ctx: JobContext, src: Path, out: Path, kind: str) -> None:
+def _render_svg(ctx: JobContext | None, src: Path, out: Path, kind: str) -> None:
     process.run(["rsvg-convert", "-f", kind, "-o", out, src], ctx, timeout_s=SVG_TIMEOUT_S)
+
+
+def svg_to_pdf(src: Path, out: Path, ctx: JobContext | None = None) -> None:
+    """An SVG as a vector PDF (``rsvg-convert``)."""
+    _render_svg(ctx, src, out, "pdf")
 
 
 def open_image(path: Path, format_id: str) -> Image.Image:
@@ -314,15 +319,20 @@ def _pdf_page_data(page: Image.Image, lossless: bool) -> bytes:
     return buffer.getvalue()
 
 
-def add_pdf_pages(ctx: JobContext, doc, src: Path, im: Image.Image, source: str) -> list[str]:
-    """Add ``im`` (every page of a multi-page TIFF) to the PyMuPDF ``doc``; returns notes."""
+def add_pdf_pages(
+    ctx: JobContext | None, doc, src: Path, im: Image.Image, source: str
+) -> list[str]:
+    """Add ``im`` (every page of a multi-page TIFF) to the PyMuPDF ``doc``; returns notes.
+
+    ``ctx`` may be None outside a job (the PDF Editor adding a picture as a page)."""
     notes: list[str] = []
     multi_page = source == "tiff" and getattr(im, "n_frames", 1) > 1
     if getattr(im, "n_frames", 1) > 1 and not multi_page:
         notes.append(f"Only the first {_frames_word(source)} was kept")
     pages = list(ImageSequence.Iterator(im)) if multi_page else [im]
     for page_image in pages:
-        ctx.check()
+        if ctx is not None:
+            ctx.check()
         upright = ImageOps.exif_transpose(page_image.copy())
         orientation = page_image.getexif().get(EXIF_ORIENTATION, 1)
         if source == "jpg" and len(pages) == 1 and orientation == 1:

@@ -23,8 +23,8 @@ images **To One PDF** and **Read QR** codes; for several audio files or videos a
 **Remove Audio** and **Normalize** loudness. The Actions wheel also has **Archive** (ZIP,
 TAR.GZ, 7Z).
 
-One image, video or sound file gets an **Edit** slice on the Tools wheel, which opens one
-editor for every change:
+One image, video or sound file, or one or more PDFs, get an **Edit** slice on the Tools wheel,
+which opens one editor for every change:
 
 - **Image Editor**: Crop, Adjust (turn, mirror, resize, brightness, contrast, saturation),
   Redact (black box, blur, pixelate), Annotate (pen, highlighter, lines, arrows, boxes,
@@ -34,6 +34,11 @@ editor for every change:
   pictures of the marked frames.
 - **Sound Editor**: Trim, Speed, Sound (channels, bleeps, even loudness) and Video (a
   waveform, bars, spectrum or picture video, saved as MP4).
+- **PDF Editor**: every page in a grid. Organize (drag pages to a new place, turn, duplicate,
+  delete, add blank pages, add the pages of other PDFs or pictures by dropping them in) and
+  Split (**Save Parts…** at the selected pages, every N pages or by page ranges); **Save
+  Selection…** saves the selected pages as a PDF of their own. Several PDFs open as one grid
+  and are saved as one PDF. Text stays selectable and links keep working.
 
 Ctrl+1, Ctrl+2, … switch between the modes; one Ctrl+Z history covers them all. Enter or
 Ctrl+S asks for the new file's name (`name-edited`), format and folder; nothing is ever

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e2e2e2"/>
+    </linearGradient>
+    <linearGradient id="moved" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffc27a"/>
+      <stop offset="1" stop-color="#f08a2c"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#7a7a7a" stroke-width="1.5" fill="url(#page)">
+    <rect x="5" y="4" width="15" height="19" rx="1.5"/>
+    <rect x="5" y="26" width="15" height="19" rx="1.5"/>
+    <rect x="27" y="26" width="15" height="19" rx="1.5"/>
+  </g>
+  <g stroke="#9a9a9a" stroke-width="1.5" stroke-linecap="round">
+    <path d="M8.5 9 H16.5 M8.5 13 H16.5 M8.5 17 H14"/>
+    <path d="M8.5 31 H16.5 M8.5 35 H16.5 M8.5 39 H14"/>
+    <path d="M30.5 31 H38.5 M30.5 35 H38.5 M30.5 39 H36"/>
+  </g>
+  <rect x="27" y="4" width="15" height="19" rx="1.5" fill="none" stroke="#9a9a9a"
+        stroke-width="1.5" stroke-dasharray="3 2.5"/>
+  <rect x="31" y="1.5" width="15" height="19" rx="1.5" fill="url(#moved)" stroke="#b5591a"
+        stroke-width="1.5" transform="rotate(8 38.5 11)"/>
+</svg>

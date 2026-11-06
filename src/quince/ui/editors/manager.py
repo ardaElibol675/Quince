@@ -26,7 +26,7 @@ from quince.ui.host import run_off_gui_thread
 
 log = logging.getLogger(__name__)
 
-EDITOR_PACKAGES = ("quince.ui.editors.image", "quince.ui.editors.media")
+EDITOR_PACKAGES = ("quince.ui.editors.image", "quince.ui.editors.media", "quince.ui.editors.pdf")
 OPEN_MESSAGE = "Opening the editor…"
 
 

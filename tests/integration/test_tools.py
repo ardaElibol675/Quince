@@ -131,8 +131,12 @@ def test_tools_offered_per_kind_of_file(tmp_path):
     assert "tool.images_to_pdf" in tools("sample.jpg", "sample.png")
     assert "tool.create_collage" in tools("sample.jpg", "sample.png")
     assert "tool.edit_image" not in tools("sample.jpg", "sample.png")
-    assert tools("sample.pdf") == ["tool.compress", "tool.metadata"]
+    assert tools("sample.pdf") == ["tool.edit_pdf", "tool.compress", "tool.metadata"]
     assert "tool.merge_pdfs" not in tools("sample.pdf")
+    pdf = copy_fixture("sample.pdf", tmp_path)
+    two = Selection.from_paths([pdf, shutil.copy(pdf, tmp_path / "second.pdf")])
+    both_pdfs = [op.id for op in REGISTRY.query(two, Kind.TOOL)]
+    assert both_pdfs[0] == "tool.edit_pdf" and "tool.merge_pdfs" in both_pdfs  # pages of both
     assert tools("sample-video.mp4") == ["tool.edit_video", "tool.compress", "tool.metadata"]
     both = tools("sample-video.mp4", "sample-video.mkv")
     assert "tool.join_videos" in both and "tool.edit_video" not in both

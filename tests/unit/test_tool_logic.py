@@ -279,7 +279,7 @@ def test_every_tool_declares_known_dependencies():
         "tool.compress", "tool.metadata", "tool.remove_audio", "tool.normalize_audio",
         "tool.extract_archive", "tool.images_to_pdf", "tool.merge_pdfs", "tool.join_videos",
         "tool.read_qr", "tool.edit_image", "tool.edit_video", "tool.edit_audio",
-        "tool.create_collage",
+        "tool.edit_pdf", "tool.create_collage",
     }  # fmt: skip
     assert all(op.run or op.start or op.editor for op in tools)
 
@@ -288,7 +288,8 @@ def test_edit_slices_share_one_bundled_icon():
     from quince.ui.theme.icons import ICON_DIR
 
     registry = discover()
-    edits = [registry.get(i) for i in ("tool.edit_image", "tool.edit_video", "tool.edit_audio")]
+    names = ("tool.edit_image", "tool.edit_video", "tool.edit_audio", "tool.edit_pdf")
+    edits = [registry.get(i) for i in names]
     assert {op.icon for op in edits} == {"quince-edit"}
     bundled = {op.icon for op in registry if op.icon.startswith("quince-")}
     assert bundled and all((ICON_DIR / f"{name}.svg").is_file() for name in bundled)
@@ -297,5 +298,11 @@ def test_edit_slices_share_one_bundled_icon():
 def test_bundled_icons_load(qapp):
     from quince.ui.theme.icons import themed
 
-    for name in ("quince-edit", "quince-crop", "quince-redact", "quince-collage"):
+    for name in (
+        "quince-edit",
+        "quince-crop",
+        "quince-redact",
+        "quince-collage",
+        "quince-organize",
+    ):
         assert not themed(name).isNull(), name

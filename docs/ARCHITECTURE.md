@@ -1028,7 +1028,7 @@ through DOCX and LibreOffice, since pandoc's ODT writer does not highlight code.
 
 ---
 
-## Editors (Phases 13–15)
+## Editors (Phases 13–16)
 
 ### Flow
 
@@ -1043,11 +1043,11 @@ wheel chosen ──▶ OperationRunner.run(op, selection)
 
 One **Edit** operation per category opens one combined editor: `tool.edit_image` →
 `image.edit`, `tool.edit_video` → `video.edit`, `tool.edit_audio` → `audio.edit` (one file
-each). Collage (`image.collage`, 2–60 images) stays an editor of its own; Normalize and Remove
+each), `tool.edit_pdf` → `pdf.edit` (one or more PDFs). Collage (`image.collage`, 2–60 images) stays an editor of its own; Normalize and Remove
 audio stay direct tools for 2+ files (`Accepts.min_items=2`).
 
-- `ui/editors/manager.py`: `discover()` finds every module in `quince.ui.editors.image` and
-  `quince.ui.editors.media` that defines `EDITOR` or `EDITORS`, keyed by `name`;
+- `ui/editors/manager.py`: `discover()` finds every module in `quince.ui.editors.image`,
+  `quince.ui.editors.media` and `quince.ui.editors.pdf` that defines `EDITOR` or `EDITORS`, keyed by `name`;
   `Operation.editor` names it. Modules starting with `_` (the modes) are skipped. A load
   failure (`JobError`) is an error toast; a missing editor name too.
 - `ui/editors/base.py` `EditorWindow`: toolbar (mode buttons, then the editor's own tools on
@@ -1119,3 +1119,39 @@ crop and the areas redacted at that time (`frame_args`).
 Playback is QtMultimedia (`ui/editors/media/player.py`). Its FFmpeg backend stalls when muted
 right after a seek or when `setPosition` is called again from inside its own status signal, so
 muting is applied a moment after the last seek and the seek after loading is queued.
+
+### PDF Editor (`ui/editors/pdf/editor.py`, `backends/pdfedit.py`)
+
+The edit is a tuple of `Page`s in output order: a source index and page number (or `BLANK`
+with a size), extra quarter turns and a `uid` (a duplicate is a new uid pointing to the same
+page; the grid's selection is a set of uids, not part of the edit). `Source`s are the opened
+PDFs and every file added later, in an append-only list (undo removes pages, never sources);
+a picture is made into PDF pages when it is added, exactly like the Image → PDF conversion
+(`imaging.add_pdf_pages`, SVG with `rsvg-convert`), so writing and drawing treat it as a PDF.
+The list operations (`moved`, `shifted`, `rotated`, `duplicated`, `without`, `inserted`) and
+splitting (`parts_at`, `parts_every`, `parse_ranges`) are pure functions.
+
+Modes: Organize (turn, duplicate, blank page, delete, Add Pages…) and Split (at the selected
+pages / every N pages / page ranges, Save Parts… into `name-parts/name-parts-01.pdf`). Moving
+pages (drag, Alt+arrows) and the editing keys work in the grid in both modes. "Save
+Selection…" writes the selected pages (`name-pages.pdf`) and keeps the editor open.
+
+- `_grid.py`: `GridLayout` is the pure geometry (columns for a width, the page or gap under a
+  point, the line for a gap, navigation targets); `PageGrid` paints only the visible pages,
+  owns the selection (click, Ctrl / Shift click, rubber band, keys; only a page and its number
+  hit, so a click between pages clears the selection), moves pages by dragging (a see-through
+  copy follows the pointer, a line marks the gap, the view scrolls at its edges) and accepts files dropped from the file
+  manager as Copy only. It sends editing keys to the editor as `command` names, and only while
+  it has the focus, so typing in the Split ranges field is never taken.
+- `_thumbs.py`: page pictures rendered by one thread with its own open documents, newest
+  request first, in fixed sizes (160 … 1280 px) up to a 256 MB budget (least recently used
+  dropped). The grid shows the nearest size it has while a sharper one is made.
+
+Writing (`pdfedit.write_parts`): the first source used is opened as it is, the pages of the
+others are inserted after it (`insert_pdf` keeps their internal links) together with the blank
+pages, then each output gets `Document.select(indices)`, which keeps text, annotations and
+links between kept pages (moved to their new place) and drops links to removed pages. Turns
+add to `/Rotate`. Bookmarks of every source pointing to a kept page are rebuilt (to its first
+copy); one under a removed bookmark moves up a level (`kept_levels`). An unchanged single PDF
+skips `select` and so keeps its page labels. A source that changed on disk since it was opened
+stops the job with a clear reason.

@@ -185,6 +185,7 @@ class EditorWindow(QWidget):
     compare_label: ClassVar[str] = "Original"  # "" hides the compare button
     save_label: ClassVar[str] = "Save"
     side_panel: ClassVar[bool] = False
+    items_word: ClassVar[str] = "images"  # the window title with several files: "3 images"
 
     saved = Signal(object)  # JobRequest
 
@@ -205,7 +206,7 @@ class EditorWindow(QWidget):
         self.mode: Mode | None = None
         self._done = False
         files = selection.files
-        name = files[0].path.name if len(files) == 1 else f"{len(files)} images"
+        name = files[0].path.name if len(files) == 1 else f"{len(files)} {self.items_word}"
         self.setWindowTitle(f"{self.title} — {name}")
 
         root = QVBoxLayout(self)

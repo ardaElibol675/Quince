@@ -176,7 +176,7 @@ def test_history_merge_back_to_start_is_no_step():
 
 def test_every_editor_operation_has_its_editor():
     editors = manager.discover()
-    assert set(editors) >= {"image.edit", "image.collage", "video.edit", "audio.edit"}
+    assert set(editors) >= {"image.edit", "image.collage", "video.edit", "audio.edit", "pdf.edit"}
     named = {op.editor for op in discover_operations().operations(Kind.TOOL) if op.editor}
     assert named <= set(editors)
 
@@ -636,3 +636,26 @@ def test_widget_methods_are_not_shadowed(qtbot, tmp_path):
     assert window.size().width() == 1000 and window.width() == 1000
     assert window.style() is not None
     assert isinstance(window.pos(), QPoint)
+
+
+def test_no_editor_hides_a_qwidget_method():
+    """An editor method named like a QWidget one (``move``, ``update``, ...) breaks Qt's own
+    calls, e.g. ``present()`` centering the window with ``move(x, y)``."""
+    from PySide6.QtWidgets import QWidget
+
+    from quince.ui.editors.base import EditorWindow
+
+    allowed = {"staticMetaObject", "event", "setFocus"}
+    for cls in {*manager.discover().values(), EditorWindow}:
+        for klass in cls.__mro__:
+            if klass in (QWidget, object) or not klass.__module__.startswith("quince."):
+                continue
+            hidden = [
+                name
+                for name in vars(klass)
+                if not name.startswith("_")
+                and name not in allowed
+                and not name.endswith("Event")
+                and hasattr(QWidget, name)
+            ]
+            assert not hidden, f"{klass.__name__} hides QWidget.{hidden}"
