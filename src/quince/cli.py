@@ -279,6 +279,10 @@ def cmd_library(_args: argparse.Namespace) -> int:
     return _ask_service("library")
 
 
+def cmd_settings(_args: argparse.Namespace) -> int:
+    return _ask_service("settings")
+
+
 def cmd_integrate(args: argparse.Namespace) -> int:
     from quince.integrations import install
 
@@ -294,7 +298,7 @@ def cmd_integrate(args: argparse.Namespace) -> int:
     for path in install.install():
         print(f"installed {path}")
     print()
-    print("The app menu now has Quince (Home), with Library and Quit Quince actions.")
+    print("The app menu now has Quince (Home), with Library, Settings and Quit Quince actions.")
     if install.nautilus_python_available():
         print('Restart Nautilus to load "Open in Quince": nautilus -q')
     else:
@@ -367,6 +371,8 @@ def build_parser() -> argparse.ArgumentParser:
     home.set_defaults(func=cmd_home)
     library = sub.add_parser("library", help="show the Library")
     library.set_defaults(func=cmd_library)
+    settings = sub.add_parser("settings", help="show the Settings window")
+    settings.set_defaults(func=cmd_settings)
 
     integrate = sub.add_parser(
         "integrate", help="add Quince to the app menu and the Nautilus context menu"

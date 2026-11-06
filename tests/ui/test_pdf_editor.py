@@ -427,3 +427,19 @@ def test_page_tooltips_name_the_source(tmp_path):
     assert describe(window.pages[0], window.sources) == "Page 1 of a.pdf · turned 90°"
     key(window, Qt.Key.Key_B)
     assert describe(window.pages[1], window.sources) == "Blank page"
+
+
+def test_save_names_and_folder_follow_the_output_settings(tmp_path):
+    from quince.core.config import OutputConfig, OutputLocation
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    window = open_editor([make_pdf(tmp_path / "a.pdf", 2)])
+    window.output_config = lambda: OutputConfig(
+        OutputLocation.FOLDER, out_dir, {"edited": "changed", "pages": "some"}
+    )
+    assert window.default_stem() == "a-changed"
+    assert window.suffixed("pages") == "a-some"
+    assert window.suffixed("parts") == "a-parts"
+    snap = emitted(window, window.save)
+    assert snap.outputs == (out_dir / "a-changed.pdf",)

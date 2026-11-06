@@ -17,6 +17,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from quince.core import formats
+from quince.core.config import CONVERTED
 from quince.core.jobs import JobContext, JobError
 from quince.core.routes import Route
 
@@ -44,10 +45,10 @@ class Outputs:
         self._ctx, self._source, self._extension = ctx, source, extension
 
     def file(self) -> Path:
-        return self._ctx.new_output(self._source, extension=self._extension)
+        return self._ctx.new_output(self._source, extension=self._extension, suffix=CONVERTED)
 
     def folder(self) -> Path:
-        return self._ctx.new_output(self._source, extension="", directory=True)
+        return self._ctx.new_output(self._source, extension="", directory=True, suffix=CONVERTED)
 
 
 def backend(name: str) -> Callable[[JobContext, Path, Route, Outputs], None] | None:

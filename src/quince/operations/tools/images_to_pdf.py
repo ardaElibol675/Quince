@@ -40,4 +40,5 @@ OPERATION = Operation(
     requires=("pymupdf",),
     order=70,
     start=_start,
+    suffixes=("combined",),
 )

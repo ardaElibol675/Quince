@@ -14,6 +14,15 @@ max_tap_ms = 400
 location = "source"          # "source" (next to the original) or "folder"
 folder = "~/Converted"       # used when location = "folder"
 
+[output.suffixes]            # replaces the words added to output names
+converted = "copy"           # conversions, none by default: photo.jpg -> photo-copy.png
+compressed = "small"         # photo-compressed.jpg -> photo-small.jpg
+
+[appearance]
+theme = "system"             # "system", "light" or "dark" (every Quince window)
+wheel_size = "medium"        # "small", "medium" or "large"
+animations = true
+
 [wheels.convert]
 order = ["convert.image.jpg"] # shown first, in this order; the rest keep their default order
 disabled = ["convert.image.bmp"]
@@ -56,6 +65,12 @@ DEFAULT_TRIGGERS: Mapping[str, tuple[str, ...]] = MappingProxyType(
 DEFAULT_MAX_TAP_MS = 400
 MAX_TAP_MS_RANGE = (50, 2000)
 
+# The suffix key of Convert outputs; unlike a tool's suffix, its default is none.
+CONVERTED = "converted"
+MAX_SUFFIX_CHARS = 40
+THEMES = ("system", "light", "dark")
+WHEEL_SIZES: Mapping[str, float] = MappingProxyType({"small": 0.85, "medium": 1.0, "large": 1.2})
+
 
 def validate_triggers(triggers: Mapping[str, Sequence[str]]) -> dict[str, str]:
     """Return a key -> wheel map; reject Super/Hyper keys and keys bound twice."""
@@ -81,16 +96,43 @@ class Triggers:
     max_tap_ms: int = DEFAULT_MAX_TAP_MS
 
 
+def clean_suffix(text: str) -> str:
+    """A user-typed suffix made safe for file names (no folders, no outer dashes/spaces)."""
+    text = text.replace("/", "-").replace("\0", "")
+    return text.strip().strip(".-_ ").strip()[:MAX_SUFFIX_CHARS].strip()
+
+
 @dataclass(frozen=True)
 class OutputConfig:
     location: OutputLocation = OutputLocation.SOURCE
     folder: Path | None = None
+    # The user's words for output suffixes, by their default word (``CONVERTED`` for
+    # conversions). Only changed suffixes are listed.
+    suffixes: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     def directory_for(self, source: Path) -> Path:
         """Where outputs made from ``source`` go."""
         if self.location is OutputLocation.FOLDER and self.folder is not None:
             return self.folder
         return Path(source).parent
+
+    def suffix(self, key: str | None) -> str | None:
+        """The suffix to add for ``key`` (a tool's default word, or ``CONVERTED``); None: none."""
+        if key is None:
+            return None
+        default = "" if key == CONVERTED else key
+        return self.suffixes.get(key, default) or None
+
+
+@dataclass(frozen=True)
+class Appearance:
+    theme: str = "system"
+    wheel_size: str = "medium"
+    animations: bool = True
+
+    @property
+    def wheel_scale(self) -> float:
+        return WHEEL_SIZES[self.wheel_size]
 
 
 @dataclass(frozen=True)
@@ -110,6 +152,7 @@ class Config:
     triggers: Triggers = field(default_factory=Triggers)
     output: OutputConfig = field(default_factory=OutputConfig)
     wheels: Mapping[str, WheelPrefs] = field(default_factory=_default_wheels)
+    appearance: Appearance = field(default_factory=Appearance)
 
     def wheel(self, name: str) -> WheelPrefs:
         return self.wheels.get(name, WheelPrefs())
@@ -169,7 +212,7 @@ def _parse_triggers(data: Mapping[str, Any], warnings: list[str]) -> Triggers:
 
 def _parse_output(data: Mapping[str, Any], warnings: list[str]) -> OutputConfig:
     table = _table(data, "output", warnings)
-    _warn_unknown(table, ("location", "folder"), "output.", warnings)
+    _warn_unknown(table, ("location", "folder", "suffixes"), "output.", warnings)
     try:
         location = OutputLocation(table.get("location", OutputLocation.SOURCE.value))
     except ValueError:
@@ -187,7 +230,43 @@ def _parse_output(data: Mapping[str, Any], warnings: list[str]) -> OutputConfig:
     if location is OutputLocation.FOLDER and folder is None:
         warnings.append("output.location is 'folder' but output.folder is not set; using 'source'")
         location = OutputLocation.SOURCE
-    return OutputConfig(location, folder)
+    return OutputConfig(location, folder, _parse_suffixes(table, warnings))
+
+
+def _parse_suffixes(table: Mapping[str, Any], warnings: list[str]) -> Mapping[str, str]:
+    raw = _table(table, "suffixes", warnings) if "suffixes" in table else {}
+    suffixes = {}
+    for key, value in raw.items():
+        if not isinstance(value, str):
+            warnings.append(f"output.suffixes.{key} must be a string; ignored")
+            continue
+        cleaned = clean_suffix(value)
+        if not cleaned and key != CONVERTED:
+            warnings.append(f"output.suffixes.{key} must not be empty; using {key!r}")
+            continue
+        if cleaned != ("" if key == CONVERTED else key):
+            suffixes[key] = cleaned
+    return MappingProxyType(suffixes)
+
+
+def _parse_appearance(data: Mapping[str, Any], warnings: list[str]) -> Appearance:
+    table = _table(data, "appearance", warnings)
+    _warn_unknown(table, ("theme", "wheel_size", "animations"), "appearance.", warnings)
+    default = Appearance()
+    theme = table.get("theme", default.theme)
+    if theme not in THEMES:
+        warnings.append(f"appearance.theme must be one of {', '.join(THEMES)}; using 'system'")
+        theme = default.theme
+    size = table.get("wheel_size", default.wheel_size)
+    if not isinstance(size, str) or size not in WHEEL_SIZES:
+        choices = ", ".join(WHEEL_SIZES)
+        warnings.append(f"appearance.wheel_size must be one of {choices}; using 'medium'")
+        size = default.wheel_size
+    animations = table.get("animations", default.animations)
+    if not isinstance(animations, bool):
+        warnings.append("appearance.animations must be true or false; using true")
+        animations = default.animations
+    return Appearance(theme, size, animations)
 
 
 def _parse_wheels(data: Mapping[str, Any], warnings: list[str]) -> Mapping[str, WheelPrefs]:
@@ -214,11 +293,12 @@ def _parse_wheels(data: Mapping[str, Any], warnings: list[str]) -> Mapping[str, 
 def from_dict(data: Mapping[str, Any]) -> tuple[Config, list[str]]:
     """Build a Config from parsed TOML. Returns the config and the warnings."""
     warnings: list[str] = []
-    _warn_unknown(data, ("triggers", "output", "wheels"), "", warnings)
+    _warn_unknown(data, ("triggers", "output", "wheels", "appearance"), "", warnings)
     config = Config(
         triggers=_parse_triggers(data, warnings),
         output=_parse_output(data, warnings),
         wheels=_parse_wheels(data, warnings),
+        appearance=_parse_appearance(data, warnings),
     )
     return config, warnings
 
@@ -227,6 +307,8 @@ def to_dict(config: Config) -> dict[str, Any]:
     output: dict[str, Any] = {"location": config.output.location.value}
     if config.output.folder is not None:
         output["folder"] = str(config.output.folder)
+    output["suffixes"] = dict(sorted(config.output.suffixes.items()))
+    appearance = config.appearance
     return {
         "triggers": {
             **{w: list(config.triggers.keys.get(w, ())) for w in WHEELS},
@@ -239,6 +321,11 @@ def to_dict(config: Config) -> dict[str, Any]:
                 "disabled": sorted(config.wheel(w).disabled),
             }
             for w in WHEELS
+        },
+        "appearance": {
+            "theme": appearance.theme,
+            "wheel_size": appearance.wheel_size,
+            "animations": appearance.animations,
         },
     }
 

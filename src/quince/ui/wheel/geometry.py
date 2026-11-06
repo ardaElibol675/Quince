@@ -5,6 +5,9 @@ Coordinates are relative to the wheel center, with y pointing down (screen coord
 
 The ring keeps a fixed thickness. When N grows, the ring grows too, so every slice keeps at
 least ``MIN_SLICE_ARC`` pixels of arc at its label radius (CLAUDE.md Hard Rules 1 and 2).
+
+A layout is in wheel units; ``scale`` (the wheel size setting) maps them to screen pixels.
+The painter scales its drawing, ``window_size`` and ``hit_test`` work in screen pixels.
 """
 
 from __future__ import annotations
@@ -50,6 +53,7 @@ class WheelLayout:
     icon_size: int
     font_px: int
     slices: tuple[Slice, ...]
+    scale: float = 1.0
 
     @property
     def label_radius(self) -> float:
@@ -57,8 +61,13 @@ class WheelLayout:
 
     @property
     def window_size(self) -> int:
-        """Side of the square window that holds the wheel."""
-        return math.ceil(2 * (self.outer_radius + WINDOW_MARGIN))
+        """Side of the square window that holds the wheel, in screen pixels."""
+        return math.ceil(2 * (self.outer_radius + WINDOW_MARGIN) * self.scale)
+
+    @property
+    def screen_radius(self) -> float:
+        """The outer radius in screen pixels."""
+        return self.outer_radius * self.scale
 
     def slice_arc(self) -> float:
         """Arc length of one slice at the label radius, in pixels."""
@@ -77,10 +86,12 @@ def angle_of(x: float, y: float) -> float:
     return math.degrees(math.atan2(x, -y)) % 360
 
 
-def layout(count: int) -> WheelLayout:
-    """The layout for ``count`` slices (0 gives an empty ring)."""
+def layout(count: int, scale: float = 1.0) -> WheelLayout:
+    """The layout for ``count`` slices (0 gives an empty ring), drawn ``scale`` times larger."""
     if count < 0:
         raise ValueError("count must be >= 0")
+    if scale <= 0:
+        raise ValueError("scale must be > 0")
     needed_label_radius = count * MIN_SLICE_ARC / (2 * math.pi)
     inner = max(BASE_INNER_RADIUS, needed_label_radius - RING_WIDTH / 2)
     outer = inner + RING_WIDTH
@@ -101,12 +112,13 @@ def layout(count: int) -> WheelLayout:
         center = i * span_deg
         x, y = point_on_circle(label_radius, center)
         slices.append(Slice(i, (center - span_deg / 2) % 360, span_deg, x, y, label_width))
-    return WheelLayout(count, inner, outer, icon_size, font_px, tuple(slices))
+    return WheelLayout(count, inner, outer, icon_size, font_px, tuple(slices), scale)
 
 
 def region(wheel: WheelLayout, x: float, y: float) -> str:
-    """``"center"``, ``"ring"`` or ``"outside"`` for a point relative to the center."""
-    r = math.hypot(x, y)
+    """``"center"``, ``"ring"`` or ``"outside"`` for a point relative to the center (in
+    screen pixels)."""
+    r = math.hypot(x, y) / wheel.scale
     if r < wheel.inner_radius:
         return "center"
     if r <= wheel.outer_radius + HIT_SLOP and wheel.count:

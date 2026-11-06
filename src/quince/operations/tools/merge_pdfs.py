@@ -35,4 +35,5 @@ OPERATION = Operation(
     requires=("pymupdf",),
     order=60,
     start=_start,
+    suffixes=("merged",),
 )

@@ -240,11 +240,15 @@ class JobContext:
     ) -> Path:
         """A temporary path to write one output to; returns it.
 
+        ``suffix`` is an operation's declared word (``Operation.suffixes``) or ``CONVERTED``;
+        the word the user chose in Settings replaces it.
+
         The final name (next to ``source``, in the configured folder, or in ``target_dir``
         when given) is reserved now and taken when the job succeeds. With ``directory``, a
         temporary folder is created. ``name`` replaces the source's stem (a name the user
         chose); it is still made free like any other.
         """
+        suffix = self._output.suffix(suffix)
         if target_dir is None:
             target_dir = self._output.directory_for(Path(source))
         if not os.access(target_dir, os.W_OK | os.X_OK):

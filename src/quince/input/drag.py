@@ -152,6 +152,12 @@ class DragTracker:
         self._keys_down: set[str] = set()
         self._tap: tuple[str, int] | None = None  # (key, press time)
 
+    def set_triggers(self, triggers: Mapping[str, Sequence[str]], max_tap_ms: int) -> None:
+        """New trigger keys (Settings); a tap in progress is dropped."""
+        self._wheel_for_key = validate_triggers(triggers)
+        self.max_tap_ms = max_tap_ms
+        self._tap = None
+
     @property
     def trigger_keys(self) -> frozenset[str]:
         return frozenset(self._wheel_for_key)

@@ -81,22 +81,7 @@ class JobCard(QFrame):
         self._show_files = show_files
         self.setObjectName("card")
         self.setFixedWidth(CARD_WIDTH)
-        self.setStyleSheet(
-            f"""
-            #card {{ background: {_rgba(colors.ring)};
-                     border: 1px solid {_rgba(colors.ring_border)}; border-radius: 12px; }}
-            QLabel {{ color: {_rgba(colors.text)}; background: transparent; }}
-            QLabel#detail {{ color: {_rgba(colors.text_dim)}; }}
-            QPushButton {{ color: {_rgba(colors.text)}; background: transparent;
-                           border: 1px solid {_rgba(colors.ring_border)}; border-radius: 6px;
-                           padding: 3px 10px; }}
-            QPushButton:hover {{ background: {_rgba(colors.separator)}; }}
-            QPushButton#close {{ border: none; padding: 0 4px; font-size: 15px; }}
-            QProgressBar {{ background: {_rgba(colors.separator)}; border: none; border-radius: 2px;
-                            max-height: 4px; }}
-            QProgressBar::chunk {{ background: {_rgba(colors.accent)}; border-radius: 2px; }}
-            """
-        )
+        self.apply_colors(colors)
 
         self.status = QLabel()
         self.title = QLabel(snapshot.title)
@@ -136,6 +121,24 @@ class JobCard(QFrame):
         layout.addWidget(self.bar)
         layout.addLayout(buttons)
         self.update_snapshot(snapshot)
+
+    def apply_colors(self, colors: WheelColors) -> None:
+        self.setStyleSheet(
+            f"""
+            #card {{ background: {_rgba(colors.ring)};
+                     border: 1px solid {_rgba(colors.ring_border)}; border-radius: 12px; }}
+            QLabel {{ color: {_rgba(colors.text)}; background: transparent; }}
+            QLabel#detail {{ color: {_rgba(colors.text_dim)}; }}
+            QPushButton {{ color: {_rgba(colors.text)}; background: transparent;
+                           border: 1px solid {_rgba(colors.ring_border)}; border-radius: 6px;
+                           padding: 3px 10px; }}
+            QPushButton:hover {{ background: {_rgba(colors.separator)}; }}
+            QPushButton#close {{ border: none; padding: 0 4px; font-size: 15px; }}
+            QProgressBar {{ background: {_rgba(colors.separator)}; border: none; border-radius: 2px;
+                            max-height: 4px; }}
+            QProgressBar::chunk {{ background: {_rgba(colors.accent)}; border-radius: 2px; }}
+            """
+        )
 
     def update_snapshot(self, s: JobSnapshot) -> None:
         self.snapshot = s
@@ -210,6 +213,14 @@ class JobsPanel(QWidget):
         self._layout.setSpacing(8)
         self._layout.addStretch(1)
         self._corner: QPoint | None = None
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.styleHints().colorSchemeChanged.connect(self._on_color_scheme)
+
+    def _on_color_scheme(self, *_args) -> None:
+        colors = wheel_colors(self.scheme)
+        for card in self.cards.values():
+            card.apply_colors(colors)
 
     def on_event(self, snapshot: JobSnapshot) -> None:
         card = self.cards.get(snapshot.id)

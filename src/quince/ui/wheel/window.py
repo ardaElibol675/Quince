@@ -86,6 +86,7 @@ class WheelWindow(QWidget):
         *,
         scheme: str = "system",
         animations: bool = True,
+        scale: float = 1.0,
         grab_keyboard: bool = False,
         drop_settle_ms: int = DROP_SETTLE_MS,
     ) -> None:
@@ -104,6 +105,7 @@ class WheelWindow(QWidget):
 
         self.scheme = scheme
         self.animations = animations
+        self.scale = scale  # the wheel size setting
         self.grab_keyboard_on_open = grab_keyboard
         self.drop_settle_ms = drop_settle_ms
         self.colors = wheel_colors(scheme)
@@ -196,6 +198,11 @@ class WheelWindow(QWidget):
         self._animate(1.0, OPEN_MS, QEasingCurve.Type.OutCubic)
         log.debug("wheel %s opened with %d items", content.wheel, len(content.items))
 
+    def set_appearance(self, *, scale: float, animations: bool) -> None:
+        """The wheel size and animation settings; a wheel that is open keeps its size."""
+        self.scale = scale
+        self.animations = animations
+
     def set_content(self, content: WheelContent) -> None:
         """Replace the contents without animation (e.g. the dragged files became known)."""
         if not self._open or content == self.content:
@@ -281,7 +288,7 @@ class WheelWindow(QWidget):
 
     def _set_content(self, content: WheelContent) -> None:
         self.content = content
-        self.layout_ = geometry.layout(len(content.items))
+        self.layout_ = geometry.layout(len(content.items), self.scale)
         self.state.reset(len(content.items))
         self.highlight_changed.emit(None)
 
@@ -290,7 +297,7 @@ class WheelWindow(QWidget):
         if self._previous is not None:
             layouts.append(self._previous[1])
         size = max(lay.window_size for lay in layouts)
-        radius = max(lay.outer_radius for lay in layouts) + SCREEN_PADDING
+        radius = max(lay.screen_radius for lay in layouts) + SCREEN_PADDING
         screen = QGuiApplication.screenAt(self._center.toPoint()) or QGuiApplication.primaryScreen()
         if screen is not None:
             area = screen.availableGeometry()

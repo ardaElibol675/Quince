@@ -22,6 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
+from quince.core.config import CONVERTED, clean_suffix
 from quince.core.formats import Category
 from quince.core.forms import Form, Values
 from quince.core.routes import Route
@@ -217,6 +218,9 @@ class Operation:
     # Extra dependencies for some source formats, e.g. {"pdf": ("gs",)}: a tool stays
     # available for the other formats when one of them is missing.
     requires_by_format: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    # The words this operation adds to output names (``photo-compressed.jpg``), so Settings
+    # can offer to change them. Every suffix a job or editor uses must be declared here.
+    suffixes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.title:
@@ -228,6 +232,9 @@ class Operation:
             raise ValueError(f"operation {self.id}: set only one of run, start and editor")
         if self.routes and self.kind is not Kind.CONVERT:
             raise ValueError(f"operation {self.id}: only convert operations have routes")
+        for suffix in self.suffixes:
+            if suffix == CONVERTED or not suffix or suffix != clean_suffix(suffix):
+                raise ValueError(f"operation {self.id}: bad suffix {suffix!r}")
 
     def route_for(self, format_id: str | None) -> Route | None:
         return next((r for r in self.routes if r.source == format_id), None)

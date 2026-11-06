@@ -5,7 +5,7 @@ The ``.deb`` package (Phase 18) installs the same files system-wide instead.
 
 | File | For |
 |------|-----|
-| ``applications/quince.desktop`` | the app menu entry (opens Home), with Library and Quit actions |
+| ``applications/quince.desktop`` | the app menu entry (opens Home); Library, Settings, Quit |
 | ``icons/hicolor/scalable/apps/quince.svg`` | its icon |
 | ``nautilus-python/extensions/quince_nautilus.py`` | "Open in Quince" in Nautilus |
 """
@@ -70,11 +70,15 @@ Categories=Utility;
 Keywords=convert;converter;file;wheel;pdf;image;video;
 StartupNotify=false
 StartupWMClass={APP_ID}
-Actions=library;quit;
+Actions=library;settings;quit;
 
 [Desktop Action library]
 Name=Library
 Exec={exec_line(command, "library")}
+
+[Desktop Action settings]
+Name=Settings
+Exec={exec_line(command, "settings")}
 
 [Desktop Action quit]
 Name=Quit Quince
@@ -112,7 +116,8 @@ def targets(command: Sequence[str] | None = None, data_home: Path | None = None)
     ]
 
 
-def _write(path: Path, content: str) -> None:
+def write_file(path: Path, content: str) -> None:
+    """Write ``content`` atomically, readable by everyone (0644)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
     try:
@@ -129,7 +134,7 @@ def install(command: Sequence[str] | None = None, data_home: Path | None = None)
     """Write every file (replacing an older version). Returns the paths written."""
     written = []
     for target in targets(command, data_home):
-        _write(target.path, target.content)
+        write_file(target.path, target.content)
         written.append(target.path)
         log.info("installed %s", target.path)
     return written

@@ -120,3 +120,72 @@ def test_xdg_paths(monkeypatch, tmp_path):
     assert paths.config_file() == tmp_path / "cfg" / "quince" / "config.toml"
     assert paths.data_dir() == Path.home() / ".local/share/quince"
     assert paths.state_dir() == Path.home() / ".local/state/quince"
+
+
+# --- output suffixes and appearance (Phase 17) ------------------------------------------
+
+
+def test_suffixes_and_appearance_round_trip(tmp_path):
+    cfg, warnings = config.from_dict(
+        {
+            "output": {"suffixes": {"compressed": "small", "converted": "copy"}},
+            "appearance": {"theme": "dark", "wheel_size": "large", "animations": False},
+        }
+    )
+    assert warnings == []
+    loaded = config.load(config.save(cfg, tmp_path / "config.toml"))
+    assert loaded == cfg
+    assert loaded.output.suffix("compressed") == "small"
+    assert loaded.output.suffix("edited") == "edited"
+    assert loaded.output.suffix(config.CONVERTED) == "copy"
+    assert loaded.appearance == config.Appearance("dark", "large", False)
+    assert loaded.appearance.wheel_scale > 1
+
+
+def test_default_suffixes():
+    out = config.OutputConfig()
+    assert out.suffix(None) is None
+    assert out.suffix(config.CONVERTED) is None  # conversions add nothing by default
+    assert out.suffix("cropped") == "cropped"
+
+
+def test_suffix_values_are_cleaned_and_defaults_dropped():
+    cfg, warnings = config.from_dict(
+        {
+            "output": {
+                "suffixes": {
+                    "compressed": " -a/b- ",
+                    "edited": "edited",  # the default: not stored
+                    "merged": "",  # a tool suffix cannot be empty
+                    "joined": 3,
+                    "converted": "",
+                }
+            }
+        }
+    )
+    assert dict(cfg.output.suffixes) == {"compressed": "a-b"}
+    assert any("merged must not be empty" in w for w in warnings)
+    assert any("joined must be a string" in w for w in warnings)
+
+
+@pytest.mark.parametrize(
+    ("data", "fragment"),
+    [
+        ({"appearance": {"theme": "blue"}}, "appearance.theme"),
+        ({"appearance": {"wheel_size": "huge"}}, "appearance.wheel_size"),
+        ({"appearance": {"animations": "yes"}}, "appearance.animations"),
+        ({"appearance": {"colour": 1}}, "unknown setting appearance.'colour'"),
+        ({"output": {"suffixes": []}}, "[suffixes] must be a table"),
+    ],
+)
+def test_invalid_appearance_and_suffixes_fall_back(data, fragment):
+    cfg, warnings = config.from_dict(data)
+    assert any(fragment in w for w in warnings), warnings
+    assert cfg.appearance == config.Appearance()
+    assert dict(cfg.output.suffixes) == {}
+
+
+def test_clean_suffix():
+    assert config.clean_suffix("  --small.  ") == "small"
+    assert config.clean_suffix("a/b") == "a-b"
+    assert len(config.clean_suffix("x" * 100)) == config.MAX_SUFFIX_CHARS

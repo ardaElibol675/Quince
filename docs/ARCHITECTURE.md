@@ -186,7 +186,7 @@ Registry.query(selection, kind, available=..., prefs=...) ──▶ the wheel's 
   5. Config: disabled ids are dropped; ids in `order` come first, the rest keep the default
      order (`Operation.order`, then label).
 - `Registry.unavailable()` lists what missing dependencies hide, per route for Convert. It
-  feeds `quince doctor` now and the Settings window later (Phase 17).
+  feeds `quince doctor` and the Settings window (Phase 17).
 
 ### File type detection
 
@@ -1155,3 +1155,58 @@ add to `/Rotate`. Bookmarks of every source pointing to a kept page are rebuilt 
 copy); one under a removed bookmark moves up a level (`kept_levels`). An unchanged single PDF
 skips `select` and so keeps its page labels. A source that changed on disk since it was opened
 stops the job with a clear reason.
+
+## Settings (Phase 17)
+
+### Window (`ui/settings/window.py`, `ui/settings/model.py`)
+
+One window with four pages: General (start at login, theme, wheel size, animations), Triggers,
+Wheels and Output. It lives in the service and opens from Ctrl+, in any Quince window (an
+application-wide event filter in `Shell`; the wheel keeps its keys), the tray menu, the app
+menu action "Settings" and `quince settings` (socket command `settings`). Every change is
+saved at once (no Apply button) and `SettingsWindow.changed` carries the new `Config`;
+`present()` reads the file again, so hand edits show up. What the pages show is plain logic
+in `model.py` (no Qt): the trigger check, the wheel rows, the suffix rows.
+
+- **Triggers**: check boxes per wheel for a fixed list of keys (Shift, Ctrl, Alt left/right,
+  AltGr, Menu; keys only the config names are listed too). Super is never offered. A key for
+  two wheels is an error and nothing is saved until it is fixed; a wheel without keys and
+  Right Alt (AltGr on many layouts) are warnings. The tap length is a spin box.
+- **Wheels**: every operation of each wheel (registry), checkable and in the user's order
+  (drag, Move Up / Down, Restore Default). The order is stored only when it differs from the
+  default, so new operations show up by themselves. Below, what missing programs hide, grouped
+  by reason (`Registry.unavailable`).
+- **Output**: next to the original or one folder; the names of new files.
+
+### Applying without a restart
+
+Most consumers read the config on every use (wheel contents, jobs, editors). The rest is
+pushed by `app.run_service` on `Shell.config_changed`:
+- theme: `QStyleHints.setColorScheme` for the whole application (`theme.colors.apply_theme`).
+  "system" resets it to the desktop's. Widgets with their own colors (wheel, job cards, Float
+  shelf, Home drop area) restyle on `colorSchemeChanged` / `PaletteChange`;
+- wheel size and animations: `WheelWindow.set_appearance` (from the next opening);
+- trigger keys: `X11InputWatcher.set_triggers` hands them to the watcher thread under a lock;
+  it applies them (and the keycode map) within one poll interval. Home's tap detector and
+  hint follow.
+
+### Wheel size
+
+`geometry.layout(count, scale)` keeps every radius in wheel units and records the scale; the
+painter scales its drawing, `window_size` / `screen_radius` and `hit_test` work in screen
+pixels. Small / Medium / Large are 0.85 / 1.0 / 1.2.
+
+### Output names
+
+`Operation.suffixes` declares every word an operation adds to output names (the edit tools
+also declare `parts`, `pages`, `frame`, `frames`); a unit test fails when a job or editor uses
+a suffix nobody declared. `OutputConfig.suffixes` maps a default word to the user's word, and
+`JobContext.new_output(suffix=...)` and `EditorWindow.suffixed()` apply it. Conversions pass
+the key `converted`, whose default is no suffix. Words are cleaned (`clean_suffix`: no `/`,
+no outer dashes, at most 40 characters); a tool's word cannot be empty.
+
+### Start at login (`integrations/autostart.py`)
+
+`~/.config/autostart/quince.desktop` runs `quince service`. The file is the setting; one that
+says `Hidden=true` or `X-GNOME-Autostart-enabled=false` (e.g. turned off in Startup
+Applications) counts as off.

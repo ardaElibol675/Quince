@@ -1,4 +1,4 @@
-"""The tray icon (an AppIndicator on Ubuntu's GNOME): open Home or the Library, quit Quince."""
+"""The tray icon (an AppIndicator on Ubuntu's GNOME): open Home, the Library or Settings, quit."""
 
 from __future__ import annotations
 
@@ -19,12 +19,14 @@ class Tray(QObject):
         *,
         on_home: Callable[[], None],
         on_library: Callable[[], None],
+        on_settings: Callable[[], None],
         on_quit: Callable[[], None],
     ) -> None:
         super().__init__()
         self.menu = QMenu()
         self.menu.addAction("Open Quince", on_home)
         self.menu.addAction("Library", on_library)
+        self.menu.addAction("Settings", on_settings)
         self.menu.addSeparator()
         self.menu.addAction("Quit Quince", on_quit)
         self.icon = QSystemTrayIcon(icon, self)

@@ -105,4 +105,5 @@ OPERATION = Operation(
     requires_by_format={"pdf": ("gs",), **requires_for(_MEDIA, MEDIA_DEPS)},
     order=10,
     start=_start,
+    suffixes=("compressed",),
 )

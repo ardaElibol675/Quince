@@ -18,4 +18,5 @@ OPERATION = Operation(
     requires_by_format=IMAGE_EDITOR_DEPS,
     order=16,
     editor="image.collage",
+    suffixes=("collage",),
 )

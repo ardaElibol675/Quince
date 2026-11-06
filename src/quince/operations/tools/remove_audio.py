@@ -25,4 +25,5 @@ OPERATION = Operation(
     requires=MEDIA_DEPS,
     order=30,
     run=lambda ctx: each_file(ctx, _one),
+    suffixes=("no-audio",),
 )

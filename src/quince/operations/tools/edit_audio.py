@@ -18,4 +18,5 @@ OPERATION = Operation(
     requires=MEDIA_DEPS,
     order=5,
     editor="audio.edit",
+    suffixes=("edited",),
 )

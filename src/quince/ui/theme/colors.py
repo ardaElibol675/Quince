@@ -1,11 +1,15 @@
-"""Light and dark color sets, following the system color scheme."""
+"""Light and dark color sets, following the application's color scheme.
+
+``apply_theme`` sets the scheme of every Quince window (Settings → Appearance); "system"
+follows the desktop. Widgets with their own colors listen to ``colorSchemeChanged``.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication, QStyleHints
 
 SCHEMES = ("system", "light", "dark")
 
@@ -60,3 +64,21 @@ def wheel_colors(scheme: str = "system") -> WheelColors:
     if scheme == "system":
         return DARK if system_is_dark() else LIGHT
     return DARK if scheme == "dark" else LIGHT
+
+
+def apply_theme(theme: str, hints: QStyleHints | None = None) -> None:
+    """Light or dark for every Quince window; ``"system"`` follows the desktop again.
+
+    (The offscreen platform of the tests has no color schemes and ignores this.)
+    """
+    if theme not in SCHEMES:
+        raise ValueError(f"unknown color scheme {theme!r}")
+    app = QGuiApplication.instance()
+    if hints is None and app is None:
+        return
+    scheme = {
+        "light": Qt.ColorScheme.Light,
+        "dark": Qt.ColorScheme.Dark,
+        "system": Qt.ColorScheme.Unknown,
+    }[theme]
+    (hints or app.styleHints()).setColorScheme(scheme)

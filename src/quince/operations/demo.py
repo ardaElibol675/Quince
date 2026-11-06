@@ -51,6 +51,7 @@ OPERATIONS = (
         icon="media-playback-start",
         accepts=Accepts(),
         order=900,
+        suffixes=("demo",),
         run=_slow,
     ),
     Operation(
@@ -61,6 +62,7 @@ OPERATIONS = (
         icon="dialog-error",
         accepts=Accepts(),
         order=901,
+        suffixes=("demo",),
         run=_fail,
     ),
 )

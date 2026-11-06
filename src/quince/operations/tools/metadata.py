@@ -84,4 +84,5 @@ OPERATION = Operation(
     requires_by_format=requires_for(metadata.MEDIA_FORMATS, MEDIA_DEPS),
     order=20,
     start=_start,
+    suffixes=("no-metadata",),
 )

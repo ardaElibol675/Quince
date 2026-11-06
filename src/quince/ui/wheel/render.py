@@ -92,7 +92,7 @@ class WheelPainter:
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.setOpacity(opacity)
         p.translate(center)
-        p.scale(scale, scale)
+        p.scale(scale * wheel.scale, scale * wheel.scale)
 
         self._shadow(p, wheel, colors)
         p.save()

@@ -247,3 +247,40 @@ def test_scroll_never_cancels_or_breaks_a_tap(tracker, button):
     start_drag(tracker)
     events = [KeyPress("Shift_L", 100), ButtonPress(button, 110, 0, 0), KeyRelease("Shift_L", 120)]
     assert feed_all(tracker, events) == [TriggerTapped("convert", "Shift_L", 120)]
+
+
+def test_new_triggers_apply_at_once():
+    from quince.input import drag as d
+
+    tracker = d.DragTracker({"convert": ("Shift_L",)}, max_tap_ms=400, require_dnd=False)
+    tracker.feed(d.ButtonPress(1, 0, 0, 0))
+    tracker.feed(d.Motion(10, 50, 0))
+    assert tracker.in_drag
+    tracker.feed(d.KeyPress("Shift_L", 20))
+    tracker.set_triggers({"convert": ("Control_R",), "tools": ("Shift_L",)}, 300)
+    # The tap that started under the old keys is dropped.
+    assert tracker.feed(d.KeyRelease("Shift_L", 30)) == []
+    tracker.feed(d.KeyPress("Shift_L", 40))
+    assert tracker.feed(d.KeyRelease("Shift_L", 60)) == [d.TriggerTapped("tools", "Shift_L", 60)]
+    tracker.feed(d.KeyPress("Control_R", 100))
+    assert tracker.feed(d.KeyRelease("Control_R", 500)) == []  # longer than 300 ms
+    assert tracker.trigger_keys == {"Control_R", "Shift_L"}
+
+
+def test_watcher_hands_new_triggers_to_its_thread(monkeypatch):
+    from quince.input import drag as d
+    from quince.input.x11 import X11InputWatcher
+
+    tracker = d.DragTracker()
+    watcher = X11InputWatcher(tracker, lambda _signal: None)
+    refreshed = []
+    monkeypatch.setattr(watcher, "_refresh_keymap", refreshed.append)
+    with pytest.raises(ValueError):
+        watcher.set_triggers({"convert": ("Super_L",)}, 400)
+    watcher.set_triggers({"convert": ("Menu",), "tools": (), "actions": ()}, 300)
+    assert tracker.trigger_keys != {"Menu"}  # not before the watcher thread takes them
+    watcher._take_triggers("display")
+    assert tracker.trigger_keys == {"Menu"} and tracker.max_tap_ms == 300
+    assert refreshed == ["display"]
+    watcher._take_triggers("display")  # nothing new
+    assert refreshed == ["display"]

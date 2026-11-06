@@ -17,4 +17,5 @@ OPERATION = Operation(
     requires=MEDIA_DEPS,
     order=5,
     editor="video.edit",
+    suffixes=("edited", "parts", "frame", "frames"),
 )

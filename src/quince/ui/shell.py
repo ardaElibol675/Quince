@@ -3,6 +3,7 @@ without a drag. ``quince.app`` creates one ``Shell`` and routes the socket comma
 
 Commands (one line each, see ``quince.app``):
 - ``home`` / ``library``: show the window on that page.
+- ``settings``: show the Settings window (also Ctrl+, in any Quince window, and the tray).
 - ``open {"paths": [...], "wheel": "convert" | null}``: open a wheel at the pointer for these
   files (the Nautilus menu and ``quince open``).
 """
@@ -15,14 +16,16 @@ import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QPoint
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal
+from PySide6.QtGui import QGuiApplication, QIcon, QKeyEvent
+from PySide6.QtWidgets import QWidget
 
 from quince.core import config
 from quince.core.registry import Registry
 from quince.integrations.install import icon_path
 from quince.ui.home.window import MainWindow
 from quince.ui.library.model import LibraryModel
+from quince.ui.settings.window import SettingsWindow
 from quince.ui.tray import Tray
 from quince.ui.wheel.direct import DirectWheel
 from quince.ui.wheel.model import WHEEL_TITLES
@@ -59,7 +62,15 @@ def open_request(paths: Sequence[str | Path], wheel: str | None = None) -> str:
     return "open " + json.dumps({"paths": [str(p) for p in paths], "wheel": wheel})
 
 
+def is_settings_key(event: QKeyEvent) -> bool:
+    """Ctrl+, (the usual Preferences shortcut), with either Ctrl and no other modifier."""
+    mods = event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
+    return event.key() == Qt.Key.Key_Comma and mods == Qt.KeyboardModifier.ControlModifier
+
+
 class Shell(QObject):
+    config_changed = Signal(object)  # Config, saved by the Settings window
+
     def __init__(
         self,
         wheel: WheelWindow,
@@ -75,7 +86,10 @@ class Shell(QObject):
     ) -> None:
         super().__init__()
         self.library = library
+        self.registry = registry
+        self.wheel = wheel
         self._load_config = load_config
+        self._settings: SettingsWindow | None = None
         self.direct = DirectWheel(
             wheel, registry, load_config=load_config, busy=drag_busy, notify=notify
         )
@@ -84,9 +98,16 @@ class Shell(QObject):
         self.tray: Tray | None = None
         if tray:
             self.tray = Tray(
-                app_icon(), on_home=self.show_home, on_library=self.show_library, on_quit=quit_app
+                app_icon(),
+                on_home=self.show_home,
+                on_library=self.show_library,
+                on_settings=self.show_settings,
+                on_quit=quit_app,
             )
             self.tray.show()
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)  # Ctrl+, in every Quince window
 
     @property
     def window(self) -> MainWindow:
@@ -104,6 +125,34 @@ class Shell(QObject):
         self.window.configure(self._load_config())
         self.window.show_library()
 
+    @property
+    def settings(self) -> SettingsWindow:
+        if self._settings is None:
+            self._settings = SettingsWindow(self.registry, load=self._load_config)
+            self._settings.setWindowIcon(app_icon())
+            self._settings.changed.connect(self._on_config_changed)
+        return self._settings
+
+    def show_settings(self) -> None:
+        self.settings.present()
+
+    def _on_config_changed(self, cfg: config.Config) -> None:
+        if self._window is not None:
+            self._window.configure(cfg)
+        self.config_changed.emit(cfg)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and is_settings_key(event)
+            and isinstance(obj, QWidget)  # not the QWindow that forwards it to the widget
+            and obj.window() is not self.wheel  # a wheel opened without a drag has the keys
+        ):
+            self.show_settings()
+            return True
+        return False
+
     def open_files(
         self, paths: Sequence[str | Path], wheel: str | None = None, pos: QPoint | None = None
     ) -> bool:
@@ -112,7 +161,12 @@ class Shell(QObject):
     # --- socket commands ---------------------------------------------------------------
 
     def handlers(self) -> dict[str, Callable[[str], str]]:
-        return {"home": self._cmd_home, "library": self._cmd_library, "open": self._cmd_open}
+        return {
+            "home": self._cmd_home,
+            "library": self._cmd_library,
+            "settings": self._cmd_settings,
+            "open": self._cmd_open,
+        }
 
     def _cmd_home(self, _arg: str) -> str:
         self.show_home()
@@ -120,6 +174,10 @@ class Shell(QObject):
 
     def _cmd_library(self, _arg: str) -> str:
         self.show_library()
+        return "ok"
+
+    def _cmd_settings(self, _arg: str) -> str:
+        self.show_settings()
         return "ok"
 
     def _cmd_open(self, arg: str) -> str:

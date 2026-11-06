@@ -95,3 +95,23 @@ def test_clamp_center_keeps_the_wheel_on_screen():
     assert clamp_center(1925, 5, 150, (1920, -200, 2560, 1440)) == (2070, 5)
     # Screen smaller than the wheel: centered.
     assert clamp_center(0, 0, 300, (0, 0, 400, 400)) == (200, 200)
+
+
+@pytest.mark.parametrize("scale", [0.85, 1.0, 1.2])
+@pytest.mark.parametrize("n", [1, 5, 12])
+def test_scaled_layout_hits_the_same_slices_in_screen_pixels(n, scale):
+    base, wheel = layout(n), layout(n, scale)
+    assert wheel.outer_radius == base.outer_radius  # wheel units do not change
+    assert wheel.screen_radius == pytest.approx(base.outer_radius * scale)
+    assert abs(wheel.window_size - base.window_size * scale) <= 1
+    for s in wheel.slices:
+        assert hit_test(wheel, s.label_x * scale, s.label_y * scale) == s.index
+    # Just outside the scaled ring (but inside the unscaled one when larger) hits nothing.
+    edge = (wheel.outer_radius + geometry.HIT_SLOP + 1) * scale
+    assert hit_test(wheel, 0, -edge) is None
+    assert hit_test(wheel, 0, -base.inner_radius * scale * 0.9) is None
+
+
+def test_scale_must_be_positive():
+    with pytest.raises(ValueError):
+        layout(3, 0)

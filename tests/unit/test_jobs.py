@@ -448,3 +448,27 @@ def test_item_progress_is_mapped_to_its_span(source, tmp_path):
     assert by_message["second file"] == 0.5
     assert by_message["halfway"] == 0.75
     assert by_message["outside an item"] == 0.25
+
+
+def test_suffixes_from_settings_replace_the_declared_ones(queue, source):
+    output = OutputConfig(suffixes={"compressed": "small", "converted": "copy"})
+
+    def run(ctx):
+        ctx.new_output(source, suffix="compressed").write_bytes(b"x")
+        ctx.new_output(source, suffix="edited").write_bytes(b"x")
+        ctx.new_output(source, extension="jpg", suffix="converted").write_bytes(b"x")
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source), title="t", output=output))
+    assert [p.name for p in snap.outputs] == [
+        "photo-small.png",
+        "photo-edited.png",
+        "photo-copy.jpg",
+    ]
+
+
+def test_conversions_add_no_suffix_by_default(queue, source):
+    def run(ctx):
+        ctx.new_output(source, extension="jpg", suffix="converted").write_bytes(b"x")
+
+    snap = wait_finished(queue, queue.submit(run, _sel(source), title="t"))
+    assert [p.name for p in snap.outputs] == ["photo.jpg"]

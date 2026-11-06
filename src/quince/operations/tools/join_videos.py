@@ -42,4 +42,5 @@ OPERATION = Operation(
     requires=MEDIA_DEPS,
     order=65,
     start=_start,
+    suffixes=("joined",),
 )

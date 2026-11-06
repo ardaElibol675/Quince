@@ -344,7 +344,7 @@ class PdfEditor(EditorWindow):
         if not indices:
             return
         target = self.ask_target(
-            PDF_CHOICES, "pdf", f"{self._first().stem}-pages", title="Save Selection",
+            PDF_CHOICES, "pdf", self.suffixed("pages"), title="Save Selection",
         )  # fmt: skip
         if target is None:
             return
@@ -367,7 +367,7 @@ class PdfEditor(EditorWindow):
         if not split.usable(parts):
             return
         target = self.ask_target(
-            PDF_CHOICES, "pdf", f"{self._first().stem}-parts", title="Save Parts",
+            PDF_CHOICES, "pdf", self.suffixed("parts"), title="Save Parts",
             folder_output=True, accept_label="Save Parts",
         )  # fmt: skip
         if target is None:

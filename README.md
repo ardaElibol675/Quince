@@ -101,6 +101,7 @@ python scripts/lock_deps.py [--check]          # update (or check) requirements.
 quince wheel-demo --n 7                        # preview the wheel (Shift/Ctrl/Alt tap = switch, Q = quit)
 quince list-ops FILE...                        # what each wheel offers for these files/folders
 quince config                                  # print the effective settings (~/.config/quince/config.toml)
+quince settings                                # open the Settings window (also Ctrl+, or the tray menu)
 python scripts/gen_formats_table.py            # regenerate docs/FORMATS.md after changing formats or routes
 ```
 

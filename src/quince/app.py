@@ -4,7 +4,8 @@
 running one through a local socket and exits; ``quince service --stop`` asks it to quit,
 ``quince service --restart`` stops it and opens Home, which starts a fresh one.
 Other ``quince`` commands talk to it over the same socket, one line per request:
-``<command>[ <argument>]`` (``ping``, ``quit``, ``home``, ``library``, ``open <json>``).
+``<command>[ <argument>]`` (``ping``, ``quit``, ``home``, ``library``, ``settings``,
+``open <json>``).
 ``ensure_service`` starts the service first when none is running.
 """
 
@@ -179,6 +180,7 @@ def run_service(*, demo_ops: bool = False) -> int:
     from quince.ui.runner import OperationRunner
     from quince.ui.shelf.window import ShelfWindow
     from quince.ui.shell import Shell, app_icon
+    from quince.ui.theme.colors import apply_theme
     from quince.ui.wheel.controller import DragWheelController
     from quince.ui.wheel.window import WheelWindow
 
@@ -208,7 +210,9 @@ def run_service(*, demo_ops: bool = False) -> int:
 
         for op in OPERATIONS:
             registry.register(op)
-    wheel = WheelWindow()
+    look = cfg.appearance
+    apply_theme(look.theme)
+    wheel = WheelWindow(scale=look.wheel_scale, animations=look.animations)
     toast = Toast()
     panel = JobsPanel()
     job_bridge = JobBridge()
@@ -252,6 +256,14 @@ def run_service(*, demo_ops: bool = False) -> int:
         log.error("%s", exc)
         server.close()
         return 2
+
+    def apply_config(new: config.Config) -> None:
+        """Settings changed: what is not read again on every use is applied here."""
+        apply_theme(new.appearance.theme)
+        wheel.set_appearance(scale=new.appearance.wheel_scale, animations=new.appearance.animations)
+        watcher.set_triggers(new.triggers.keys, new.triggers.max_tap_ms)
+
+    shell.config_changed.connect(apply_config)
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: app.quit())

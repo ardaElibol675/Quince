@@ -58,6 +58,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from quince.core import config
 from quince.core.operations import JobRequest
 from quince.core.selection import Selection
 from quince.ui.editors.canvas import CanvasTool, ImageCanvas
@@ -202,6 +203,8 @@ class EditorWindow(QWidget):
         self.history: History | None = None
         self.confirm_discard: Callable[[], bool] = self._ask_discard
         self.run_save_dialog: Callable[[SaveDialog], SaveTarget | None] = run_save_dialog
+        # The output settings (folder, suffixes), read when they are needed.
+        self.output_config: Callable[[], config.OutputConfig] = lambda: config.load().output
         self.modes: list[Mode] = []
         self.mode: Mode | None = None
         self._done = False
@@ -317,7 +320,14 @@ class EditorWindow(QWidget):
         return self.output_choices()[0].format_id
 
     def default_stem(self) -> str:
-        return f"{self.selection.files[0].path.stem}-edited"
+        return self.suffixed("edited")
+
+    def suffixed(self, suffix: str, stem: str | None = None) -> str:
+        """``stem`` (the first file's) with an output suffix the operation declares, in the
+        word the user chose in Settings: ``photo-edited``."""
+        stem = self.selection.files[0].path.stem if stem is None else stem
+        word = self.output_config().suffix(suffix)
+        return f"{stem}-{word}" if word else stem
 
     def before_save(self) -> None:
         """Finish what is being typed or dragged before the result is read."""
@@ -388,7 +398,7 @@ class EditorWindow(QWidget):
             choices,
             format_id=format_id,
             stem=stem,
-            folder=source.parent,
+            folder=self.output_config().directory_for(source),
             folder_output=folder_output,
             accept_label=accept_label,
             parent=self,

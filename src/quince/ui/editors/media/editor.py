@@ -272,7 +272,7 @@ class VideoEditor(EditWindow):
 
     def save_parts(self) -> None:
         split = self.part("split")
-        stem = f"{self.source.path.stem}-parts"
+        stem = self.suffixed("parts")
         choices = [OutputChoice(f) for f in VIDEO_FORMATS]
         target = self.ask_target(
             choices, self.default_format(), stem, title="Save Parts", folder_output=True,
@@ -299,10 +299,9 @@ class VideoEditor(EditWindow):
 
     def save_frames(self) -> None:
         times = self.marks.markers or (self.position,)
-        stem = self.source.path.stem
         several = len(times) > 1
         target = self.ask_target(
-            FRAME_FORMATS, "png", f"{stem}-frames" if several else f"{stem}-frame",
+            FRAME_FORMATS, "png", self.suffixed("frames" if several else "frame"),
             title="Save Frames", folder_output=several, accept_label="Save Frames",
         )  # fmt: skip
         if target is None:

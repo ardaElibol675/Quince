@@ -304,5 +304,6 @@ def test_bundled_icons_load(qapp):
         "quince-redact",
         "quince-collage",
         "quince-organize",
+        "quince-wheel",
     ):
         assert not themed(name).isNull(), name

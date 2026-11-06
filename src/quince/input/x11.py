@@ -18,12 +18,13 @@ import logging
 import select
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from Xlib import XK, X, display, error
 from Xlib.ext import ge, xfixes, xinput
 from Xlib.protocol import rq
 
+from quince.core.config import validate_triggers
 from quince.input import drag
 from quince.input.xdnd import parse_uri_list
 
@@ -106,12 +107,32 @@ class X11InputWatcher:
         self._targets_atom = 0
         self._fetch: tuple[int, float] | None = None  # (drag time, deadline)
         self._fetch_stage = ""  # "targets", then "uri-list"
+        self._lock = threading.Lock()
+        self._new_triggers: tuple[dict[str, tuple[str, ...]], int] | None = None
 
     def start(self) -> None:
         """Connect and start the watcher thread; raises ``X11Unavailable`` on failure."""
         self._disp = self._connect()
         self._thread = threading.Thread(target=self._run, name="quince-x11-input", daemon=True)
         self._thread.start()
+
+    def set_triggers(self, triggers: Mapping[str, Sequence[str]], max_tap_ms: int) -> None:
+        """Use new trigger keys (any thread); the watcher thread takes them within
+        ``POLL_INTERVAL_S``. Raises ValueError for keys a tracker refuses."""
+        validate_triggers(triggers)
+        with self._lock:
+            self._new_triggers = ({w: tuple(k) for w, k in triggers.items()}, max_tap_ms)
+
+    def _take_triggers(self, disp: display.Display) -> None:
+        with self._lock:
+            new, self._new_triggers = self._new_triggers, None
+        if new is None:
+            return
+        self._tracker.set_triggers(*new)
+        self._refresh_keymap(disp)
+        log.info(
+            "trigger keys changed: %s", ", ".join(f"{w}={'/'.join(k)}" for w, k in new[0].items())
+        )
 
     def stop(self, timeout: float = 2.0) -> None:
         self._stop.set()
@@ -179,6 +200,7 @@ class X11InputWatcher:
         assert disp is not None
         try:
             while not self._stop.is_set():
+                self._take_triggers(disp)
                 readable, _, _ = select.select([disp.fileno()], [], [], POLL_INTERVAL_S)
                 if not readable and not disp.pending_events():
                     continue

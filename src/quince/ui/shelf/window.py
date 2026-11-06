@@ -178,7 +178,13 @@ class ShelfWindow(QWidget):
 
         self.frame = QFrame(self)
         self.frame.setObjectName("shelf")
+        self.scheme = scheme
         self._apply_colors(wheel_colors(scheme))
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.styleHints().colorSchemeChanged.connect(
+                lambda *_a: self._apply_colors(wheel_colors(self.scheme))
+            )
 
         header = _Header()
         self.title = QLabel("Float")

@@ -29,6 +29,8 @@ def test_desktop_entry_opens_home_and_has_library_and_quit_actions():
     assert entry["Exec"] == '"/opt/My Venv/bin/python" -m quince home'
     assert entry["StartupWMClass"] == "quince"
     assert parser["Desktop Action library"]["Exec"].endswith(" library")
+    assert parser["Desktop Action settings"]["Exec"].endswith(" settings")
+    assert entry["Actions"] == "library;settings;quit;"
     assert parser["Desktop Action quit"]["Exec"].endswith(" service --stop")
 
 

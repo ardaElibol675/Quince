@@ -17,4 +17,5 @@ OPERATION = Operation(
     requires_by_format=IMAGE_EDITOR_DEPS,
     order=5,
     editor="image.edit",
+    suffixes=("edited",),
 )

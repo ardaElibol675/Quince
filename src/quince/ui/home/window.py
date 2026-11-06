@@ -48,6 +48,7 @@ from quince.ui.home import paste as pasting
 from quince.ui.keys import keysym_name
 from quince.ui.library.model import LibraryModel
 from quince.ui.library.page import LibraryPage, format_date
+from quince.ui.settings.model import trigger_hint
 from quince.ui.shelf.window import default_open, dropped_paths
 
 log = logging.getLogger(__name__)
@@ -57,7 +58,6 @@ STATUS_MS = 6000
 WINDOW_SIZE = (720, 620)
 HOME_TAB, LIBRARY_TAB = 0, 1
 DROP_ACCENT = (226, 128, 38)  # the wheel's orange
-TRIGGER_HINT = "Select files, then press Enter or tap Shift / Ctrl / Alt for a wheel."
 
 
 class DropZone(QFrame):
@@ -98,6 +98,11 @@ class DropZone(QFrame):
             border = f"2px dashed rgba({text.red()}, {text.green()}, {text.blue()}, 90)"
             background = ""
         self.setStyleSheet(f"#dropzone {{ border: {border}; border-radius: 12px; {background} }}")
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange:
+            self._set_hover(False)  # light / dark changed: the border follows the text color
 
     def _accept(self, event: QDragEnterEvent | QDragMoveEvent | QDropEvent) -> bool:
         if not dropped_paths(event.mimeData()):
@@ -206,7 +211,7 @@ class HomePage(QWidget):
         self.files = FileList(open_file=open_file)
         self.files.wheel_requested.connect(lambda p, at: self.wheel_requested.emit(p, None, at))
         self.files.delete_pressed.connect(self.remove_selected)
-        self.hint = QLabel(TRIGGER_HINT)
+        self.hint = QLabel(trigger_hint(config.DEFAULT_TRIGGERS))
         self.hint.setEnabled(False)  # dimmed
 
         self.library_button = QPushButton("Library")
@@ -351,8 +356,9 @@ class MainWindow(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, self._escape)
 
     def configure(self, cfg: config.Config) -> None:
-        """Apply the config (trigger keys); called before every show."""
+        """Apply the config (trigger keys); called before every show and after Settings."""
         self.home.taps.configure(cfg)
+        self.home.hint.setText(trigger_hint(cfg.triggers.keys))
 
     def show_home(self) -> None:
         self.tabs.setCurrentIndex(HOME_TAB)

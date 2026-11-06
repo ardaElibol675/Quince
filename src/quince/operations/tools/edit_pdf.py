@@ -15,4 +15,5 @@ OPERATION = Operation(
     requires=("pymupdf",),
     order=5,
     editor="pdf.edit",
+    suffixes=("edited", "pages", "parts"),
 )
