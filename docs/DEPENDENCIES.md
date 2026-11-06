@@ -76,6 +76,19 @@ drag tests invisibly (`tests/integration/test_x11_drag.py`), and `python3-gi` wi
 (part of Ubuntu desktop) runs their GTK3 drag source under the system Python. Without Xvfb
 the tests need `xserver-xephyr` and `QUINCE_NESTED_X=1`, and they open a small window.
 
+## The `.deb` package (Phase 18)
+
+The package (`scripts/build_deb.py`) depends on `python3.10`, `ffmpeg`, `util-linux`, `procps`
+and the system libraries its bundled binaries link against (found automatically: Qt's xcb
+platform, GTK 3 theme, PulseAudio, EGL/GL, fontconfig, ...; all part of an Ubuntu desktop). It
+**recommends** `libreoffice-writer`, `libreoffice-calc`, `libreoffice-impress`, `pandoc`,
+`librsvg2-bin`, `p7zip-full`, `ghostscript`, `zbar-tools`, `tesseract-ocr`,
+`tesseract-ocr-tur`, `python3-nautilus` and `xdg-utils`, and **suggests** `unrar`.
+
+Building it needs `python3.10-venv` (`python3-venv`), `dpkg-deb` (`dpkg`), `readelf`
+(`binutils`) and `dpkg -S`; all are on the dev machine. pip downloads the locked Python
+packages once if its cache does not have them (build time only).
+
 ## Python packages (`.venv`, from `pyproject.toml`)
 
 Exact versions are pinned in `requirements.lock` (install with `-c requirements.lock`);
@@ -100,7 +113,9 @@ process at startup; `QUINCE_KEEP_PYTHONPATH=1` turns this off.
 | `pytest`      | dev: tests                                  | 9.2.0          |
 | `pytest-qt`   | dev: Qt widget tests                        | 4.5.0          |
 
-PyMuPDF is AGPL-3.0. This is fine for personal use; check it before distributing a `.deb` (Phase 18).
+PyMuPDF and pymupdf4llm are AGPL-3.0. Quince has no license yet and the `.deb` is for personal
+use; giving the package to others means following the AGPL for it as a whole. The package
+lists every bundled package and its license in `/usr/share/doc/quince/copyright`.
 
 ## Verified format support
 
@@ -195,5 +210,5 @@ and `unrar`, which were not installed at the time. Run the script again after in
 - **ROS on `PYTHONPATH`:** on this machine `~/.bashrc` sources ROS Humble. That puts
   `/opt/ros/humble/...` before the venv on `sys.path`, and ROS's pytest plugins break test
   collection. pytest is therefore configured with `--disable-plugin-autoload -p pytestqt.plugin`.
-  No ROS package currently shadows a Quince dependency. The Phase 18 launcher should clear
-  `PYTHONPATH`.
+  No ROS package currently shadows a Quince dependency. The packaged launcher
+  (`/usr/bin/quince`) runs Python with `-I` and unsets `PYTHONPATH`.

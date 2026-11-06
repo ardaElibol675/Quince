@@ -52,6 +52,30 @@ def test_install_and_uninstall_write_only_into_the_data_home(tmp_path):
 
 def test_default_command_is_this_python():
     assert install.quince_command() == [sys.executable, "-m", "quince"]
+    assert not install.packaged()
+
+
+def test_packaged_quince_is_started_through_the_launcher(tmp_path):
+    launcher = tmp_path / "quince"
+    assert install.packaged("/opt/quince") and install.packaged("/opt/quince/")
+    assert not install.packaged("/opt/quince-dev")
+    assert install.quince_command(prefix="/opt/quince", launcher=launcher)[0] == sys.executable
+    launcher.write_text("#!/bin/sh\n")  # only once the launcher exists
+    assert install.quince_command(prefix="/opt/quince", launcher=launcher) == [str(launcher)]
+    assert install.quince_command(prefix="/home/u/.venv", launcher=launcher)[0] == sys.executable
+
+
+def test_service_is_started_like_every_other_quince(monkeypatch):
+    from quince import app
+
+    monkeypatch.setattr(install, "quince_command", lambda: ["/usr/bin/quince"])
+    assert app.service_command() == ["/usr/bin/quince", "service"]
+
+
+def test_leftover_user_files(tmp_path):
+    assert install.leftover_user_files(tmp_path) == []
+    install.install(COMMAND, tmp_path)
+    assert len(install.leftover_user_files(tmp_path)) == 3
 
 
 def test_icon_is_packaged():
@@ -67,6 +91,19 @@ def test_cli_integrate(tmp_path, monkeypatch, capsys):
     assert (tmp_path / "applications/quince.desktop").exists()
     assert cli.main(["integrate", "--remove"]) == 0
     assert not (tmp_path / "applications/quince.desktop").exists()
+
+
+def test_cli_integrate_with_the_package_installed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setattr(install, "packaged", lambda prefix=None: True)
+    assert cli.main(["integrate"]) == 0
+    assert "already installs" in capsys.readouterr().out
+    assert not (tmp_path / "applications").exists()
+    install.install(COMMAND, tmp_path)  # left over from a development setup
+    assert cli.main(["integrate"]) == 0
+    assert "quince integrate --remove" in capsys.readouterr().out
+    assert cli.main(["integrate", "--remove"]) == 0  # still removes them
+    assert install.leftover_user_files(tmp_path) == []
 
 
 # --- the Nautilus extension, with a stand-in for nautilus-python --------------------

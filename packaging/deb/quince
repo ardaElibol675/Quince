@@ -1,0 +1,7 @@
+#!/bin/sh
+# Quince launcher, installed by the quince package as /usr/bin/quince.
+# Quince lives in its own virtualenv in /opt/quince. -I keeps the user's site-packages, the
+# current folder and PYTHON* variables out of it; PYTHONPATH (e.g. ROS from ~/.bashrc) is also
+# dropped for the programs Quince starts.
+unset PYTHONPATH PYTHONHOME
+exec /opt/quince/bin/python3 -I -m quince "$@"

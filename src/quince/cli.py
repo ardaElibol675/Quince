@@ -39,10 +39,13 @@ def render_doctor(
     *,
     terminal: object = ...,
     self_tests: Sequence[tuple[str, bool | None, str]] = (),
+    installation: str = "",
+    leftovers: Sequence[Path] = (),
 ) -> str:
     """The ``quince doctor`` report. ``terminal`` is the found ``Terminal`` (or None);
     left out, the terminal line is omitted. ``self_tests`` are (name, passed, detail)
-    rows; passed None means skipped."""
+    rows; passed None means skipped. ``installation`` says where Quince runs from;
+    ``leftovers`` are ``quince integrate`` files that hide the package's own."""
     session = os.environ.get("XDG_SESSION_TYPE", "unknown")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "unknown")
     lines = [
@@ -52,6 +55,15 @@ def render_doctor(
         f"  Python   {platform.python_version()}",
         f"  Session  {session} ({desktop})",
     ]
+    if installation:
+        lines.append(f"  Install  {installation}")
+    for path in leftovers:
+        if path.parent.name == "autostart":
+            lines.append(f"  ! {path} starts another Quince at login;")
+            lines.append("    turn Start at login off and on again in Settings → General.")
+        else:
+            lines.append(f"  ! {path} (from `quince integrate`) hides the package's own;")
+            lines.append("    remove it with: quince integrate --remove")
     if session != "x11":
         lines.append("  ! The global wheel needs an X11 session; Wayland is not supported.")
     if terminal is None:
@@ -119,10 +131,25 @@ def run_self_tests(
 def cmd_doctor(_args: argparse.Namespace) -> int:
     statuses = deps.check_all()
     from quince.backends.desktop import find_terminal
+    from quince.integrations import install
 
+    if install.packaged():
+        from quince.integrations import autostart
+
+        installation = f"package ({install.INSTALL_PREFIX})"
+        leftovers = install.leftover_user_files()
+        foreign = autostart.foreign_user_entry(install.quince_command())
+        leftovers += [foreign] if foreign else []
+    else:
+        installation, leftovers = f"development ({sys.prefix})", []
     print(
         render_doctor(
-            statuses, discover(), terminal=find_terminal(), self_tests=run_self_tests(statuses)
+            statuses,
+            discover(),
+            terminal=find_terminal(),
+            self_tests=run_self_tests(statuses),
+            installation=installation,
+            leftovers=leftovers,
         )
     )
     return 1 if any(s.dependency.required and not s.available for s in statuses) else 0
@@ -294,6 +321,12 @@ def cmd_integrate(args: argparse.Namespace) -> int:
             print("Nothing to remove.")
         else:
             print("Restart Nautilus to drop its menu entry: nautilus -q")
+        return 0
+    if install.packaged():
+        print("The quince package already installs the menu entry, the icon and the Nautilus")
+        print("extension for every user; nothing to do.")
+        if install.leftover_user_files():
+            print("Older copies in your home folder hide them: quince integrate --remove")
         return 0
     for path in install.install():
         print(f"installed {path}")

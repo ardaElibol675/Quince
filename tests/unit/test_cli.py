@@ -47,6 +47,24 @@ def test_doctor_exit_code_depends_on_required(monkeypatch, capsys, ffmpeg_ok, co
     assert "dependency report" in capsys.readouterr().out
 
 
+def test_render_doctor_installation_and_leftovers():
+    from pathlib import Path
+
+    assert "Install" not in cli.render_doctor(_statuses(True, True))
+    report = cli.render_doctor(
+        _statuses(True, True),
+        installation="package (/opt/quince)",
+        leftovers=[
+            Path("/h/.local/share/applications/quince.desktop"),
+            Path("/h/.config/autostart/quince.desktop"),
+        ],
+    )
+    assert "Install  package (/opt/quince)" in report
+    assert "! /h/.local/share/applications/quince.desktop (from `quince integrate`)" in report
+    assert "quince integrate --remove" in report
+    assert "! /h/.config/autostart/quince.desktop starts another Quince at login" in report
+
+
 def test_render_doctor_terminal():
     from quince.backends.desktop import Terminal
 

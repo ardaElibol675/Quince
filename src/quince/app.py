@@ -54,7 +54,9 @@ class ServiceUnavailable(Exception):
 
 
 def service_command() -> list[str]:
-    return [sys.executable, "-m", "quince", "service"]
+    from quince.integrations.install import quince_command
+
+    return [*quince_command(), "service"]
 
 
 def ensure_service(

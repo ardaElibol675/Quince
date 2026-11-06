@@ -1,13 +1,15 @@
 """Quince for Nautilus: "Open in Quince" in the context menu of files and folders.
 
-Installed by ``quince integrate`` into ~/.local/share/nautilus-python/extensions/. It runs
-inside Nautilus (system Python with nautilus-python, package ``python3-nautilus``) and never
+Installed by the quince package into /usr/share/nautilus-python/extensions/ (in a development
+setup by ``quince integrate`` into ~/.local/share/nautilus-python/extensions/). It runs inside
+Nautilus (system Python with nautilus-python, package ``python3-nautilus``) and never
 imports Quince: it starts ``quince open`` with the selected paths, which opens the wheel at the
 pointer (starting the Quince service when it is not running).
 
 Works with the nautilus-python API 3.0 (Nautilus 42, Ubuntu 22.04) and 4.0 (Nautilus 43+).
 """
 
+import contextlib
 import os
 import subprocess
 
@@ -43,14 +45,16 @@ def _environment():
 
 
 def open_in_quince(paths):
-    subprocess.Popen(
-        [*QUINCE_COMMAND, "open", "--", *paths],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        env=_environment(),
-    )
+    # OSError: Quince was removed while Nautilus still had this extension loaded.
+    with contextlib.suppress(OSError):
+        subprocess.Popen(
+            [*QUINCE_COMMAND, "open", "--", *paths],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=_environment(),
+        )
 
 
 class QuinceMenuProvider(GObject.GObject, Nautilus.MenuProvider):

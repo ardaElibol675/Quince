@@ -1,7 +1,9 @@
 """``quince integrate``: the menu entry, the icon and the Nautilus extension for this user.
 
 Everything goes into the user's XDG data folder (``~/.local/share``); nothing needs root.
-The ``.deb`` package (Phase 18) installs the same files system-wide instead.
+The ``.deb`` package installs the same files system-wide instead (``scripts/build_deb.py``);
+a packaged Quince refuses to install them again, since the user copies would hide the
+package's menu entry and add a second "Open in Quince".
 
 | File | For |
 |------|-----|
@@ -27,12 +29,23 @@ from quince.core import paths
 log = logging.getLogger(__name__)
 
 APP_ID = "quince"
+# Where the .deb puts Quince: a virtualenv in INSTALL_PREFIX, started by LAUNCHER.
+INSTALL_PREFIX = Path("/opt/quince")
+LAUNCHER = Path("/usr/bin/quince")
 NAUTILUS_PYTHON_GLOB = "/usr/lib/*/nautilus/extensions-*/libnautilus-python.so"
 _MARK = "# Installed by `quince integrate`; `quince integrate --remove` deletes it.\n"
 
 
-def quince_command() -> list[str]:
-    """How other programs start this Quince: its own Python with ``-m quince``."""
+def packaged(prefix: str | None = None) -> bool:
+    """True when this Quince runs from the .deb's virtualenv."""
+    return Path(prefix or sys.prefix).resolve() == INSTALL_PREFIX
+
+
+def quince_command(*, prefix: str | None = None, launcher: Path = LAUNCHER) -> list[str]:
+    """How other programs start this Quince: the package's launcher, or (in a development
+    setup) its own Python with ``-m quince``."""
+    if packaged(prefix) and launcher.exists():
+        return [str(launcher)]
     return [sys.executable, "-m", "quince"]
 
 
@@ -86,12 +99,12 @@ Exec={exec_line(command, "service", "--stop")}
 """
 
 
-def nautilus_extension(command: Sequence[str]) -> str:
+def nautilus_extension(command: Sequence[str], *, header: str = _MARK) -> str:
     text = data_file("quince_nautilus.py")
     placeholder = 'QUINCE_COMMAND = ["quince"]'
     if placeholder not in text:
         raise RuntimeError("the Nautilus extension template has no command placeholder")
-    return _MARK + text.replace(placeholder, f"QUINCE_COMMAND = {list(command)!r}")
+    return header + text.replace(placeholder, f"QUINCE_COMMAND = {list(command)!r}")
 
 
 @dataclass(frozen=True)
@@ -149,6 +162,12 @@ def uninstall(data_home: Path | None = None) -> list[Path]:
             removed.append(target.path)
             log.info("removed %s", target.path)
     return removed
+
+
+def leftover_user_files(data_home: Path | None = None) -> list[Path]:
+    """Files ``quince integrate`` wrote that still exist (with a packaged Quince they hide
+    the package's own menu entry)."""
+    return [t.path for t in targets(["quince"], data_home) if t.path.exists()]
 
 
 def nautilus_python_available() -> bool:

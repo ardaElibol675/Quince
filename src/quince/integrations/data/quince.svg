@@ -1,17 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- Provisional Quince icon: a six-slice wheel with one slice highlighted. -->
-  <circle cx="64" cy="64" r="58" fill="#2b2a28"/>
-  <g fill="none" stroke-width="22">
-    <circle cx="64" cy="64" r="40" stroke="#f5efe6"/>
-    <path d="M64 24 A40 40 0 0 1 98.64 44" stroke="#e28026"/>
+  <!-- Quince app icon: a quince whose cut face is the wheel, one slice highlighted. -->
+  <defs>
+    <linearGradient id="skin" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#ffd85a"/>
+      <stop offset="1" stop-color="#f0a31c"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8cc63f"/>
+      <stop offset="1" stop-color="#4f9a2a"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 30 C 56 30 50 36 47 44 C 30 50 20 64 21 81 C 22 103 41 118 64 118 C 87 118 106 103 107 81 C 108 64 98 50 81 44 C 78 36 72 30 64 30 Z" fill="url(#skin)" stroke="#d98a12" stroke-width="2"/>
+  <path d="M64 31 C 63 24 64 18 67 12" fill="none" stroke="#6b4a2b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M67 20 C 74 8 90 6 100 12 C 94 24 80 28 67 20 Z" fill="url(#leaf)"/>
+  <path d="M69 19 C 78 15 88 13 96 13" fill="none" stroke="#3f7d22" stroke-width="1.6" stroke-linecap="round"/>
+  <g transform="translate(64 80)">
+    <circle r="31" fill="#fff4d6"/>
+    <path d="M0 -31 A31 31 0 0 1 26.85 -15.5 L0 0 Z" fill="#e2601e"/>
+    <g stroke="url(#skin)" stroke-width="4" stroke-linecap="butt">
+      <line x1="0" y1="-33" x2="0" y2="0"/>
+      <line x1="28.6" y1="-16.5" x2="0" y2="0"/>
+      <line x1="28.6" y1="16.5" x2="0" y2="0"/>
+      <line x1="0" y1="33" x2="0" y2="0"/>
+      <line x1="-28.6" y1="16.5" x2="0" y2="0"/>
+      <line x1="-28.6" y1="-16.5" x2="0" y2="0"/>
+    </g>
+    <circle r="11" fill="#f5b52e"/>
+    <circle r="5" fill="#7a4a1d"/>
   </g>
-  <g stroke="#2b2a28" stroke-width="4">
-    <line x1="64" y1="12" x2="64" y2="36"/>
-    <line x1="109" y1="38" x2="88.2" y2="50"/>
-    <line x1="109" y1="90" x2="88.2" y2="78"/>
-    <line x1="64" y1="116" x2="64" y2="92"/>
-    <line x1="19" y1="90" x2="39.8" y2="78"/>
-    <line x1="19" y1="38" x2="39.8" y2="50"/>
-  </g>
-  <circle cx="64" cy="64" r="15" fill="#e28026"/>
 </svg>
