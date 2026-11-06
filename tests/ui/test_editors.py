@@ -165,7 +165,9 @@ def test_every_editor_operation_has_its_editor():
     editors = manager.discover()
     assert set(editors) >= {
         "image.crop", "image.edit", "image.frame", "image.annotate", "image.redact",
-        "image.collage",
+        "image.collage", "video.trim", "audio.trim", "video.crop", "media.speed",
+        "video.split", "video.snapshots", "video.redact", "audio.channels", "audio.redact",
+        "audio.to_video",
     }  # fmt: skip
     named = {op.editor for op in discover_operations().operations(Kind.TOOL) if op.editor}
     assert named <= set(editors)

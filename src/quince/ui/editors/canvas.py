@@ -85,6 +85,11 @@ class ImageCanvas(QWidget):
         self.update()
 
     @property
+    def image(self) -> QImage:
+        """The picture shown (not the compare one)."""
+        return self._image
+
+    @property
     def comparing(self) -> bool:
         return self._compare is not None
 

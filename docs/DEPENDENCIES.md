@@ -85,7 +85,7 @@ process at startup; `QUINCE_KEEP_PYTHONPATH=1` turns this off.
 
 | Package       | Needed for                                  | Version tested |
 |---------------|---------------------------------------------|----------------|
-| `PySide6`     | all UI (Qt 6)                               | 6.10.3         |
+| `PySide6`     | all UI (Qt 6); QtMultimedia (bundled FFmpeg plugin) plays media in the editors | 6.10.3         |
 | `Pillow`      | image conversion and tools; native AVIF     | 12.3.0         |
 | `pillow-heif` | HEIC/HEIF read and write                    | 1.8.1          |
 | `pypdf`       | PDF merge, split, organize                  | 6.21.4         |
@@ -142,6 +142,12 @@ and `unrar`, which were not installed at the time. Run the script again after in
   affect Quince (VLC plays everything); for Totem install
   `sudo apt install gstreamer1.0-libav`. `tests/integration/test_media_routes.py` checks every
   output with the GStreamer decoders that are installed.
+- Phase 14 (media editors) findings: `showspectrum` is very slow and memory hungry at 1080p in
+  ffmpeg 4.4, so the "Spectrum" picture uses `showcqt`; `-shortest` with a copied sound ends
+  the MP4 before the first encoded picture, so Audio to video limits the length with `-t`;
+  `aeval` (bleep) runs at ~250× real time; a stream-copied sound starts at an earlier packet
+  than an exact seek, so exact cuts encode the sound too. Editor playback uses PySide6's own
+  QtMultimedia FFmpeg plugin (no GStreamer needed).
 
 ### Documents, slides, spreadsheets (LibreOffice 7.3.7.2, headless, isolated profile)
 - Writer: DOCX, ODT, DOC, RTF, HTML and TXT input are ok. Output to DOCX, ODT, PDF, TXT (UTF-8),

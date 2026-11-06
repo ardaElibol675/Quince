@@ -2,8 +2,8 @@
 
 An operation names its editor (``Operation.editor = "image.crop"``); every module in the
 editor packages (``quince.ui.editors.image``, ...) that defines ``EDITOR`` (an
-``EditorWindow`` subclass with that ``name``) provides one. Modules starting with ``_`` are
-skipped. Adding an editor needs no change here.
+``EditorWindow`` subclass with that ``name``) or ``EDITORS`` (several) provides them.
+Modules starting with ``_`` are skipped. Adding an editor needs no change here.
 
 ``EditorManager.open`` reads the files off the GUI thread, shows the window and, on Save,
 hands the editor's job to ``submit``. Several editors may be open at once.
@@ -26,7 +26,7 @@ from quince.ui.host import run_off_gui_thread
 
 log = logging.getLogger(__name__)
 
-EDITOR_PACKAGES = ("quince.ui.editors.image",)
+EDITOR_PACKAGES = ("quince.ui.editors.image", "quince.ui.editors.media")
 OPEN_MESSAGE = "Opening the editor…"
 
 
@@ -38,14 +38,15 @@ def discover(packages: tuple[str, ...] = EDITOR_PACKAGES) -> dict[str, type[Edit
             if info.name.startswith("_"):
                 continue
             module = importlib.import_module(f"{package_name}.{info.name}")
-            editor = getattr(module, "EDITOR", None)
-            if editor is None:
-                continue
-            if not editor.name:
-                raise ValueError(f"{module.__name__}: EDITOR has no name")
-            if editor.name in editors:
-                raise ValueError(f"duplicate editor name {editor.name!r}")
-            editors[editor.name] = editor
+            found = getattr(module, "EDITORS", ())
+            if getattr(module, "EDITOR", None) is not None:
+                found = (*found, module.EDITOR)
+            for editor in found:
+                if not editor.name:
+                    raise ValueError(f"{module.__name__}: an editor has no name")
+                if editor.name in editors:
+                    raise ValueError(f"duplicate editor name {editor.name!r}")
+                editors[editor.name] = editor
     return editors
 
 

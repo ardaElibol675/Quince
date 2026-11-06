@@ -134,11 +134,17 @@ def test_tools_offered_per_kind_of_file(tmp_path):
     assert "tool.crop_image" not in tools("sample.jpg", "sample.png")
     assert tools("sample.pdf") == ["tool.compress", "tool.metadata"]
     assert "tool.merge_pdfs" not in tools("sample.pdf")
-    assert tools("sample-video.mp4")[:4] == [
-        "tool.compress", "tool.metadata", "tool.remove_audio", "tool.normalize_audio"
+    assert tools("sample-video.mp4") == [
+        "tool.compress", "tool.trim_video", "tool.crop_video", "tool.change_speed",
+        "tool.split_video", "tool.video_snapshots", "tool.redact_video", "tool.audio_channels",
+        "tool.redact_audio", "tool.metadata", "tool.remove_audio", "tool.normalize_audio",
     ]  # fmt: skip
     assert "tool.join_videos" in tools("sample-video.mp4", "sample-video.mkv")
-    assert tools("sample-audio.wav") == ["tool.metadata", "tool.normalize_audio"]
+    assert tools("sample-audio.wav") == [
+        "tool.trim_audio", "tool.change_speed", "tool.audio_channels", "tool.redact_audio",
+        "tool.audio_to_video", "tool.metadata", "tool.normalize_audio",
+    ]  # fmt: skip
+    assert "tool.trim_video" not in tools("sample-video.mp4", "sample-video.mkv")
     assert tools("sample.zip") == ["tool.extract_archive"]
     assert tools("sample.svg") == [
         "tool.crop_image", "tool.edit_image", "tool.annotate_image", "tool.redact_image",

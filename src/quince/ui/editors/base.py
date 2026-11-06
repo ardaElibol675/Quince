@@ -188,12 +188,18 @@ class EditorWindow(QWidget):
         self.side_area.setVisible(self.side_panel)
         middle.addWidget(self.side_area)
         root.addLayout(middle, 1)
+        self.below = QVBoxLayout()  # under the preview: e.g. the media timeline
+        self.below.setContentsMargins(0, 0, 0, 0)
+        self.below.setSpacing(0)
+        root.addLayout(self.below)
         root.addWidget(_line())
 
         bottom = QHBoxLayout()
         bottom.setContentsMargins(12, 8, 12, 8)
         self.hint = QLabel(SHARED_HINT)
         self.hint.setEnabled(False)  # dimmed
+        # A long hint is cut off instead of pushing into the info and the buttons.
+        self.hint.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         bottom.addWidget(self.hint, 1)
         self.info = QLabel()
         bottom.addWidget(self.info)
